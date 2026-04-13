@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /**
- * Volumetric sphere body rendered as a billboard quad with 2.5D sphere shader.
- * Instantiated 3x for multi-layer depth (back/main/front).
+ * Sparkler core: concentrated bright point with diffraction spikes.
+ * Billboard quad rendered with custom shader for Pepper's Ghost projection.
  */
 
 import { useLoop } from '@tresjs/core'
@@ -13,12 +13,11 @@ import {
 } from 'three'
 import { onBeforeUnmount, shallowRef, watch } from 'vue'
 
-import spiritCoreFrag from '../../shaders/light-orb/spirit-core.frag?raw'
-import spiritCoreVert from '../../shaders/light-orb/spirit-core.vert?raw'
+import sparklerCoreFrag from '../../shaders/light-orb/sparkler-core.frag?raw'
+import sparklerCoreVert from '../../shaders/light-orb/sparkler-core.vert?raw'
 
 const props = withDefaults(defineProps<{
   energy?: number
-  interaction?: number
   audioLevel?: number
   speakingLevel?: number
   color1?: string
@@ -30,12 +29,12 @@ const props = withDefaults(defineProps<{
   coreOffsetY?: number
   coreBrightness?: number
   scaleAnimation?: number
-  zOffset?: number
-  opacityScale?: number
-  scaleMultiplier?: number
+  spikeLength?: number
+  spikeRotationSpeed?: number
+  flickerSpeed?: number
+  coreGlowSize?: number
 }>(), {
   energy: 0.5,
-  interaction: 0,
   audioLevel: 0,
   speakingLevel: 0,
   color1: '#5599FF',
@@ -47,24 +46,23 @@ const props = withDefaults(defineProps<{
   coreOffsetY: 0,
   coreBrightness: 1.0,
   scaleAnimation: 1.0,
-  zOffset: 0,
-  opacityScale: 1.0,
-  scaleMultiplier: 1.0,
+  spikeLength: 1.0,
+  spikeRotationSpeed: 0.08,
+  flickerSpeed: 15.0,
+  coreGlowSize: 25.0,
 })
 
-// 2x2 plane centered at origin (billboard expands in shader)
 const geometryRef = shallowRef(new PlaneGeometry(2, 2))
 
 const materialRef = shallowRef(new ShaderMaterial({
-  vertexShader: spiritCoreVert,
-  fragmentShader: spiritCoreFrag,
+  vertexShader: sparklerCoreVert,
+  fragmentShader: sparklerCoreFrag,
   transparent: true,
   depthWrite: false,
   blending: AdditiveBlending,
   uniforms: {
     u_time: { value: 0 },
     u_energy: { value: props.energy },
-    u_opacityScale: { value: props.opacityScale },
     u_breathSpeed: { value: props.breathSpeed },
     u_coreBrightness: { value: props.coreBrightness },
     u_flash: { value: props.flash },
@@ -72,12 +70,14 @@ const materialRef = shallowRef(new ShaderMaterial({
     u_speakingLevel: { value: props.speakingLevel },
     u_color1: { value: new Color(props.color1) },
     u_color2: { value: new Color(props.color2) },
-    u_zOffset: { value: props.zOffset },
-    u_scaleMultiplier: { value: props.scaleMultiplier },
     u_scaleAnimation: { value: props.scaleAnimation },
     u_shake: { value: props.shake },
     u_coreOffsetX: { value: props.coreOffsetX },
     u_coreOffsetY: { value: props.coreOffsetY },
+    u_spikeLength: { value: props.spikeLength },
+    u_spikeRotationSpeed: { value: props.spikeRotationSpeed },
+    u_flickerSpeed: { value: props.flickerSpeed },
+    u_coreGlowSize: { value: props.coreGlowSize },
   },
 }))
 
@@ -85,7 +85,6 @@ const startTime = Date.now()
 
 watch(() => [
   props.energy,
-  props.opacityScale,
   props.breathSpeed,
   props.coreBrightness,
   props.flash,
@@ -93,15 +92,16 @@ watch(() => [
   props.speakingLevel,
   props.color1,
   props.color2,
-  props.zOffset,
-  props.scaleMultiplier,
   props.scaleAnimation,
   props.shake,
   props.coreOffsetX,
   props.coreOffsetY,
+  props.spikeLength,
+  props.spikeRotationSpeed,
+  props.flickerSpeed,
+  props.coreGlowSize,
 ] as const, ([
   energy,
-  opacityScale,
   breathSpeed,
   coreBrightness,
   flash,
@@ -109,16 +109,17 @@ watch(() => [
   speakingLevel,
   color1,
   color2,
-  zOffset,
-  scaleMultiplier,
   scaleAnimation,
   shake,
   coreOffsetX,
   coreOffsetY,
+  spikeLength,
+  spikeRotationSpeed,
+  flickerSpeed,
+  coreGlowSize,
 ]) => {
   const u = materialRef.value.uniforms
   u.u_energy.value = energy
-  u.u_opacityScale.value = opacityScale
   u.u_breathSpeed.value = breathSpeed
   u.u_coreBrightness.value = coreBrightness
   u.u_flash.value = flash
@@ -126,12 +127,14 @@ watch(() => [
   u.u_speakingLevel.value = speakingLevel
   u.u_color1.value.set(color1)
   u.u_color2.value.set(color2)
-  u.u_zOffset.value = zOffset
-  u.u_scaleMultiplier.value = scaleMultiplier
   u.u_scaleAnimation.value = scaleAnimation
   u.u_shake.value = shake
   u.u_coreOffsetX.value = coreOffsetX
   u.u_coreOffsetY.value = coreOffsetY
+  u.u_spikeLength.value = spikeLength
+  u.u_spikeRotationSpeed.value = spikeRotationSpeed
+  u.u_flickerSpeed.value = flickerSpeed
+  u.u_coreGlowSize.value = coreGlowSize
 })
 
 const { onBeforeRender } = useLoop()

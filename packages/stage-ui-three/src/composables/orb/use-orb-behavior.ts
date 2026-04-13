@@ -18,9 +18,11 @@ import { computed, ref, watch } from 'vue'
 const EMOTION_COLORS: Record<OrbEmotion, { primary: string, secondary: string }> = {
   happy: { primary: '#FFD060', secondary: '#FF8C42' },
   neutral: { primary: '#5599FF', secondary: '#77BBFF' },
-  sad: { primary: '#4488DD', secondary: '#6050AA' },
-  angry: { primary: '#FF5533', secondary: '#FF3366' },
+  sad: { primary: '#3366AA', secondary: '#5040AA' },
+  angry: { primary: '#FF2222', secondary: '#FF0044' },
   surprised: { primary: '#E0D0FF', secondary: '#FFD060' },
+  fear: { primary: '#88CCEE', secondary: '#55AACC' },
+  disgust: { primary: '#88AA44', secondary: '#667722' },
   think: { primary: '#A080E0', secondary: '#6090E0' },
 }
 
@@ -50,9 +52,22 @@ interface EmotionParams {
   coreBrightness: number
   coreBobAmplitude: number
   coreBobFrequency: number
+  // Sparkler-specific params
+  spikeLength: number
+  rayDensity: number
+  rayMaxLength: number
+  gravity: number
+  particleSpread: number
+  // Emotion-differentiation params (new)
+  spikeRotationSpeed: number
+  tangentialSpeed: number
+  flickerSpeed: number
+  coreGlowSize: number
+  pulseRate: number
 }
 
 const EMOTION_PARAMS: Record<OrbEmotion, EmotionParams> = {
+  // Stable candle flame — calm, centered, gentle breathing
   neutral: {
     breathSpeed: 0.8,
     orbitSpeed: 1.0,
@@ -67,7 +82,7 @@ const EMOTION_PARAMS: Record<OrbEmotion, EmotionParams> = {
     particleOrganize: 0,
     activeRatio: 0.5,
     figure8: 0,
-    bobAmplitude: 0.06,
+    bobAmplitude: 0.04,
     trailBrightness: 1.0,
     trailDroop: 0,
     orbitTiltBlend: 0,
@@ -75,14 +90,25 @@ const EMOTION_PARAMS: Record<OrbEmotion, EmotionParams> = {
     coreBrightness: 1.0,
     coreBobAmplitude: 0,
     coreBobFrequency: 0,
+    spikeLength: 1.0,
+    rayDensity: 0.5,
+    rayMaxLength: 1.0,
+    gravity: 0.1,
+    particleSpread: 1.0,
+    spikeRotationSpeed: 0.08,
+    tangentialSpeed: 0.0,
+    flickerSpeed: 15.0,
+    coreGlowSize: 25.0,
+    pulseRate: 0.0,
   },
+  // Rising fireworks — upward float, spiraling particles, bouncy
   happy: {
     breathSpeed: 1.5,
     orbitSpeed: 1.8,
     shake: 0,
     verticalDrift: 0.05,
     coreOffsetX: 0,
-    coreOffsetY: 0.12,
+    coreOffsetY: 0.15,
     formationBlend: 0.75,
     formationType: 1,
     sentinelSpread: 1.2,
@@ -98,33 +124,55 @@ const EMOTION_PARAMS: Record<OrbEmotion, EmotionParams> = {
     coreBrightness: 1.0,
     coreBobAmplitude: 0.08,
     coreBobFrequency: 1.5,
+    spikeLength: 1.5,
+    rayDensity: 0.7,
+    rayMaxLength: 1.2,
+    gravity: -0.15,
+    particleSpread: 1.3,
+    spikeRotationSpeed: 0.3,
+    tangentialSpeed: 0.25,
+    flickerSpeed: 25.0,
+    coreGlowSize: 18.0,
+    pulseRate: 0.5,
   },
+  // Dying embers — sinking, dim, heavy rain-like fall
   sad: {
-    breathSpeed: 0.4,
-    orbitSpeed: 0.5,
+    breathSpeed: 0.3,
+    orbitSpeed: 0.4,
     shake: 0,
     verticalDrift: -0.08,
     coreOffsetX: 0,
-    coreOffsetY: -0.06,
+    coreOffsetY: -0.08,
     formationBlend: 0.7,
     formationType: 2,
     sentinelSpread: 0.85,
     sentinelSync: 0,
     particleOrganize: 0,
-    activeRatio: 0.65,
+    activeRatio: 0.3,
     figure8: 0,
-    bobAmplitude: 0.02,
+    bobAmplitude: 0.01,
     trailBrightness: 0.5,
     trailDroop: 0.4,
     orbitTiltBlend: 0,
     sentinelPulse: 0,
-    coreBrightness: 0.5,
+    coreBrightness: 0.4,
     coreBobAmplitude: 0,
     coreBobFrequency: 0,
+    spikeLength: 0.5,
+    rayDensity: 0.15,
+    rayMaxLength: 0.4,
+    gravity: 0.5,
+    particleSpread: 0.6,
+    spikeRotationSpeed: 0.02,
+    tangentialSpeed: 0.0,
+    flickerSpeed: 5.0,
+    coreGlowSize: 45.0,
+    pulseRate: 0.0,
   },
+  // Welding torch fury — violent shake, explosive burst, fastest
   angry: {
-    breathSpeed: 2.0,
-    orbitSpeed: 2.0,
+    breathSpeed: 2.5,
+    orbitSpeed: 2.5,
     shake: 1.0,
     verticalDrift: 0,
     coreOffsetX: 0,
@@ -141,17 +189,28 @@ const EMOTION_PARAMS: Record<OrbEmotion, EmotionParams> = {
     trailDroop: 0,
     orbitTiltBlend: 0,
     sentinelPulse: 0,
-    coreBrightness: 1.0,
+    coreBrightness: 1.2,
     coreBobAmplitude: 0,
     coreBobFrequency: 0,
+    spikeLength: 2.0,
+    rayDensity: 1.0,
+    rayMaxLength: 1.8,
+    gravity: 0.03,
+    particleSpread: 1.5,
+    spikeRotationSpeed: 0.5,
+    tangentialSpeed: 0.05,
+    flickerSpeed: 45.0,
+    coreGlowSize: 22.0,
+    pulseRate: 2.5,
   },
+  // Flash bloom — one-shot flash burst, wide spherical expansion
   surprised: {
     breathSpeed: 1.2,
-    orbitSpeed: 1.0,
+    orbitSpeed: 1.5,
     shake: 0,
     verticalDrift: 0.03,
     coreOffsetX: 0,
-    coreOffsetY: 0.05,
+    coreOffsetY: 0.08,
     formationBlend: 0.85,
     formationType: 4,
     sentinelSpread: 1.4,
@@ -167,10 +226,89 @@ const EMOTION_PARAMS: Record<OrbEmotion, EmotionParams> = {
     coreBrightness: 1.0,
     coreBobAmplitude: 0,
     coreBobFrequency: 0,
+    spikeLength: 2.5,
+    rayDensity: 0.9,
+    rayMaxLength: 1.5,
+    gravity: 0.0,
+    particleSpread: 1.5,
+    spikeRotationSpeed: 0.2,
+    tangentialSpeed: 0.0,
+    flickerSpeed: 30.0,
+    coreGlowSize: 15.0,
+    pulseRate: 0.0,
   },
-  think: {
+  // Shivering cold light — contracted, trembling, anxious high-freq flicker
+  fear: {
+    breathSpeed: 1.8,
+    orbitSpeed: 1.4,
+    shake: 0.4,
+    verticalDrift: -0.03,
+    coreOffsetX: 0,
+    coreOffsetY: -0.04,
+    formationBlend: 0.5,
+    formationType: 0,
+    sentinelSpread: 0.8,
+    sentinelSync: 0,
+    particleOrganize: 0,
+    activeRatio: 0.4,
+    figure8: 0,
+    bobAmplitude: 0.02,
+    trailBrightness: 0.8,
+    trailDroop: 0.2,
+    orbitTiltBlend: 0,
+    sentinelPulse: 0,
+    coreBrightness: 0.6,
+    coreBobAmplitude: 0,
+    coreBobFrequency: 0,
+    spikeLength: 0.7,
+    rayDensity: 0.25,
+    rayMaxLength: 0.5,
+    gravity: 0.3,
+    particleSpread: 0.3,
+    spikeRotationSpeed: 0.15,
+    tangentialSpeed: 0.0,
+    flickerSpeed: 40.0,
+    coreGlowSize: 40.0,
+    pulseRate: 0.0,
+  },
+  // Toxic miasma — murky glow, heavy droop, nausea pulsation
+  disgust: {
     breathSpeed: 0.5,
-    orbitSpeed: 1.2,
+    orbitSpeed: 0.6,
+    shake: 0,
+    verticalDrift: -0.02,
+    coreOffsetX: 0,
+    coreOffsetY: 0,
+    formationBlend: 0.4,
+    formationType: 0,
+    sentinelSpread: 1.0,
+    sentinelSync: 0,
+    particleOrganize: 0,
+    activeRatio: 0.4,
+    figure8: 0,
+    bobAmplitude: 0.02,
+    trailBrightness: 0.6,
+    trailDroop: 0.3,
+    orbitTiltBlend: 0,
+    sentinelPulse: 0,
+    coreBrightness: 0.5,
+    coreBobAmplitude: 0,
+    coreBobFrequency: 0,
+    spikeLength: 0.6,
+    rayDensity: 0.2,
+    rayMaxLength: 0.5,
+    gravity: 0.35,
+    particleSpread: 1.2,
+    spikeRotationSpeed: 0.04,
+    tangentialSpeed: 0.0,
+    flickerSpeed: 6.0,
+    coreGlowSize: 15.0,
+    pulseRate: 2.0,
+  },
+  // Focused vortex — tight spiral orbit, meditative pulsation
+  think: {
+    breathSpeed: 0.4,
+    orbitSpeed: 0.8,
     shake: 0,
     verticalDrift: 0,
     coreOffsetX: 0,
@@ -180,16 +318,26 @@ const EMOTION_PARAMS: Record<OrbEmotion, EmotionParams> = {
     sentinelSpread: 1.0,
     sentinelSync: 1.0,
     particleOrganize: 0.5,
-    activeRatio: 0.6,
+    activeRatio: 0.5,
     figure8: 0,
     bobAmplitude: 0.02,
     trailBrightness: 0.7,
     trailDroop: 0,
     orbitTiltBlend: 1.0,
     sentinelPulse: 0,
-    coreBrightness: 1.0,
+    coreBrightness: 0.8,
     coreBobAmplitude: 0,
     coreBobFrequency: 0,
+    spikeLength: 0.8,
+    rayDensity: 0.3,
+    rayMaxLength: 0.6,
+    gravity: 0.05,
+    particleSpread: 0.4,
+    spikeRotationSpeed: 0.03,
+    tangentialSpeed: 0.8,
+    flickerSpeed: 8.0,
+    coreGlowSize: 35.0,
+    pulseRate: 1.5,
   },
 }
 
@@ -391,6 +539,16 @@ export function useOrbBehavior(options: OrbBehaviorOptions) {
     p.coreBrightness += (t.coreBrightness - p.coreBrightness) * lerpFactor
     p.coreBobAmplitude += (t.coreBobAmplitude - p.coreBobAmplitude) * lerpFactor
     p.coreBobFrequency += (t.coreBobFrequency - p.coreBobFrequency) * lerpFactor
+    p.spikeLength += (t.spikeLength - p.spikeLength) * lerpFactor
+    p.rayDensity += (t.rayDensity - p.rayDensity) * lerpFactor
+    p.rayMaxLength += (t.rayMaxLength - p.rayMaxLength) * lerpFactor
+    p.gravity += (t.gravity - p.gravity) * lerpFactor
+    p.particleSpread += (t.particleSpread - p.particleSpread) * lerpFactor
+    p.spikeRotationSpeed += (t.spikeRotationSpeed - p.spikeRotationSpeed) * lerpFactor
+    p.tangentialSpeed += (t.tangentialSpeed - p.tangentialSpeed) * lerpFactor
+    p.flickerSpeed += (t.flickerSpeed - p.flickerSpeed) * lerpFactor
+    p.coreGlowSize += (t.coreGlowSize - p.coreGlowSize) * lerpFactor
+    p.pulseRate += (t.pulseRate - p.pulseRate) * lerpFactor
 
     // Activity modifiers
     const elapsed = (Date.now() - startTime) / 1000
@@ -466,6 +624,18 @@ export function useOrbBehavior(options: OrbBehaviorOptions) {
     u_coreBrightness: currentParams.value.coreBrightness,
     // Scale animation
     u_scaleAnimation: computedScaleAnimation.value,
+    // Sparkler params
+    u_spikeLength: currentParams.value.spikeLength,
+    u_rayDensity: currentParams.value.rayDensity,
+    u_rayMaxLength: currentParams.value.rayMaxLength,
+    u_gravity: currentParams.value.gravity,
+    u_particleSpread: currentParams.value.particleSpread,
+    // Emotion-differentiation uniforms
+    u_spikeRotationSpeed: currentParams.value.spikeRotationSpeed,
+    u_tangentialSpeed: currentParams.value.tangentialSpeed,
+    u_flickerSpeed: currentParams.value.flickerSpeed,
+    u_coreGlowSize: currentParams.value.coreGlowSize,
+    u_pulseRate: currentParams.value.pulseRate,
   }))
 
   return {

@@ -606,7 +606,6 @@ defineExpose({
       <LightOrbScene
         v-if="stageModelRenderer === 'particles' && showStage"
         v-model:state="componentState"
-        :camera-distance="4"
         :enable-controls="stageViewControlsEnabled"
       />
     </div>

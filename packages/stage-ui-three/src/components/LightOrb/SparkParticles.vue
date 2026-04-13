@@ -1,7 +1,8 @@
 <script setup lang="ts">
 /**
- * ~200 particles orbiting the sphere surface on 3D tilted paths.
- * Uses instanced point geometry with per-particle attributes.
+ * ~350 spark particles shooting outward from center with gravity arc.
+ * Each particle follows a radial trajectory, fading as it travels.
+ * Audio-reactive spawn intensity and emission speed.
  */
 
 import { useLoop } from '@tresjs/core'
@@ -14,8 +15,8 @@ import {
 } from 'three'
 import { onBeforeUnmount, shallowRef, watch } from 'vue'
 
-import energyParticlesFrag from '../../shaders/light-orb/energy-particles.frag?raw'
-import energyParticlesVert from '../../shaders/light-orb/energy-particles.vert?raw'
+import sparkParticlesFrag from '../../shaders/light-orb/spark-particles.frag?raw'
+import sparkParticlesVert from '../../shaders/light-orb/spark-particles.vert?raw'
 
 const props = withDefaults(defineProps<{
   energy?: number
@@ -26,6 +27,11 @@ const props = withDefaults(defineProps<{
   speakingLevel?: number
   color1?: string
   color2?: string
+  gravity?: number
+  particleSpread?: number
+  rayMaxLength?: number
+  tangentialSpeed?: number
+  pulseRate?: number
 }>(), {
   energy: 0.5,
   orbitSpeed: 1.0,
@@ -35,39 +41,52 @@ const props = withDefaults(defineProps<{
   speakingLevel: 0,
   color1: '#5599FF',
   color2: '#77BBFF',
+  gravity: 0.1,
+  particleSpread: 1.0,
+  rayMaxLength: 1.0,
+  tangentialSpeed: 0.0,
+  pulseRate: 0.0,
 })
 
-const PARTICLE_COUNT = 200
+const PARTICLE_COUNT = 350
 
-// Build particle geometry with custom attributes
 function createGeometry(): BufferGeometry {
   const geo = new BufferGeometry()
   const positions = new Float32Array(PARTICLE_COUNT * 3)
   const indices = new Float32Array(PARTICLE_COUNT)
-  const speeds = new Float32Array(PARTICLE_COUNT)
-  const radii = new Float32Array(PARTICLE_COUNT)
   const phases = new Float32Array(PARTICLE_COUNT)
-  const tilts = new Float32Array(PARTICLE_COUNT)
+  const thetas = new Float32Array(PARTICLE_COUNT)
+  const phis = new Float32Array(PARTICLE_COUNT)
+  const speeds = new Float32Array(PARTICLE_COUNT)
+  const lifetimes = new Float32Array(PARTICLE_COUNT)
+  const sizes = new Float32Array(PARTICLE_COUNT)
 
   for (let i = 0; i < PARTICLE_COUNT; i++) {
-    // Positions start at origin, shader computes actual position
     positions[i * 3] = 0
     positions[i * 3 + 1] = 0
     positions[i * 3 + 2] = 0
 
     indices[i] = i
+    phases[i] = Math.random()
+    // Uniform spherical distribution
+    thetas[i] = Math.random() * Math.PI * 2
+    phis[i] = Math.acos(2.0 * Math.random() - 1.0)
     speeds[i] = 0.3 + Math.random() * 1.2
-    radii[i] = 0.5 + Math.random() * 0.8
-    phases[i] = Math.random() * Math.PI * 2
-    tilts[i] = Math.random() * 2.0 - 1.0 // -1 to 1 (mapped to -PI to PI in shader)
+    lifetimes[i] = 0.8 + Math.random() * 1.5
+    // Variable sizes: most small, some large bright sparks
+    sizes[i] = Math.random() < 0.15
+      ? 4.0 + Math.random() * 4.0 // 15% large sparks
+      : 1.5 + Math.random() * 2.5 // 85% small sparks
   }
 
   geo.setAttribute('position', new BufferAttribute(positions, 3))
   geo.setAttribute('a_index', new BufferAttribute(indices, 1))
-  geo.setAttribute('a_speed', new BufferAttribute(speeds, 1))
-  geo.setAttribute('a_radius', new BufferAttribute(radii, 1))
   geo.setAttribute('a_phase', new BufferAttribute(phases, 1))
-  geo.setAttribute('a_tilt', new BufferAttribute(tilts, 1))
+  geo.setAttribute('a_theta', new BufferAttribute(thetas, 1))
+  geo.setAttribute('a_phi', new BufferAttribute(phis, 1))
+  geo.setAttribute('a_speed', new BufferAttribute(speeds, 1))
+  geo.setAttribute('a_lifetime', new BufferAttribute(lifetimes, 1))
+  geo.setAttribute('a_size', new BufferAttribute(sizes, 1))
 
   return geo
 }
@@ -75,8 +94,8 @@ function createGeometry(): BufferGeometry {
 const geometryRef = shallowRef(createGeometry())
 
 const materialRef = shallowRef(new ShaderMaterial({
-  vertexShader: energyParticlesVert,
-  fragmentShader: energyParticlesFrag,
+  vertexShader: sparkParticlesVert,
+  fragmentShader: sparkParticlesFrag,
   transparent: true,
   depthWrite: false,
   blending: AdditiveBlending,
@@ -90,6 +109,11 @@ const materialRef = shallowRef(new ShaderMaterial({
     u_speakingLevel: { value: props.speakingLevel },
     u_color1: { value: new Color(props.color1) },
     u_color2: { value: new Color(props.color2) },
+    u_gravity: { value: props.gravity },
+    u_particleSpread: { value: props.particleSpread },
+    u_rayMaxLength: { value: props.rayMaxLength },
+    u_tangentialSpeed: { value: props.tangentialSpeed },
+    u_pulseRate: { value: props.pulseRate },
   },
 }))
 
@@ -104,7 +128,26 @@ watch(() => [
   props.speakingLevel,
   props.color1,
   props.color2,
-] as const, ([energy, orbitSpeed, coreOffsetX, coreOffsetY, audioLevel, speakingLevel, color1, color2]) => {
+  props.gravity,
+  props.particleSpread,
+  props.rayMaxLength,
+  props.tangentialSpeed,
+  props.pulseRate,
+] as const, ([
+  energy,
+  orbitSpeed,
+  coreOffsetX,
+  coreOffsetY,
+  audioLevel,
+  speakingLevel,
+  color1,
+  color2,
+  gravity,
+  particleSpread,
+  rayMaxLength,
+  tangentialSpeed,
+  pulseRate,
+]) => {
   const u = materialRef.value.uniforms
   u.u_energy.value = energy
   u.u_orbitSpeed.value = orbitSpeed
@@ -114,6 +157,11 @@ watch(() => [
   u.u_speakingLevel.value = speakingLevel
   u.u_color1.value.set(color1)
   u.u_color2.value.set(color2)
+  u.u_gravity.value = gravity
+  u.u_particleSpread.value = particleSpread
+  u.u_rayMaxLength.value = rayMaxLength
+  u.u_tangentialSpeed.value = tangentialSpeed
+  u.u_pulseRate.value = pulseRate
 })
 
 const { onBeforeRender } = useLoop()

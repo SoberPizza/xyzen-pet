@@ -1,9 +1,12 @@
 <script setup lang="ts">
 /**
- * Holographic Spirit Pet scene orchestrator.
+ * Holographic Sparkler Spirit scene orchestrator.
  *
- * Composes: SpiritCore (3 depth layers), EnergyParticles, OrbitalWisps,
- * GroundShadow, GroundGrid, camera, and bloom post-processing.
+ * Composes: SparklerCore (bright center + diffraction spikes),
+ * SparkRays (radiating spark lines), SparkParticles (flying sparks with gravity),
+ * camera, and bloom post-processing.
+ *
+ * Optimized for Pepper's Ghost prism projection: high contrast on black background.
  */
 
 import type { OrbActivity, OrbEmotion } from '../../composables/orb/types'
@@ -11,13 +14,11 @@ import type { OrbActivity, OrbEmotion } from '../../composables/orb/types'
 import { OrbitControls } from '@tresjs/cientos'
 import { TresCanvas } from '@tresjs/core'
 import { BloomPmndrs, EffectComposerPmndrs } from '@tresjs/post-processing'
-import { onBeforeUnmount, onMounted, toRefs } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, toRefs } from 'vue'
 
-import EnergyParticles from './EnergyParticles.vue'
-import GroundGrid from './GroundGrid.vue'
-import GroundShadow from './GroundShadow.vue'
-import OrbitalWisps from './OrbitalWisps.vue'
-import SpiritCore from './SpiritCore.vue'
+import SparklerCore from './SparklerCore.vue'
+import SparkParticles from './SparkParticles.vue'
+import SparkRays from './SparkRays.vue'
 
 import { useOrbAudioReactive } from '../../composables/orb/use-orb-audio-reactive'
 import { useOrbBehavior } from '../../composables/orb/use-orb-behavior'
@@ -31,6 +32,7 @@ const props = withDefaults(defineProps<{
   rawSpeakingLevel?: number
   cameraDistance?: number
   enableControls?: boolean
+  pepperGhost?: boolean
 }>(), {
   mood: 0.3,
   energy: 0.8,
@@ -38,8 +40,9 @@ const props = withDefaults(defineProps<{
   currentEmotion: 'neutral',
   rawAudioLevel: 0,
   rawSpeakingLevel: 0,
-  cameraDistance: 4,
+  cameraDistance: 1.4,
   enableControls: false,
+  pepperGhost: true,
 })
 
 const componentState = defineModel<'pending' | 'loading' | 'mounted'>('state', { default: 'pending' })
@@ -66,35 +69,38 @@ const {
   speakingLevel,
 })
 
-// Shared props for SpiritCore layers
-function spiritCoreProps() {
-  return {
-    energy: uniforms.value.u_energy,
-    interaction: uniforms.value.u_interaction,
-    audioLevel: uniforms.value.u_audioLevel,
-    speakingLevel: uniforms.value.u_speakingLevel,
-    color1: `#${uniforms.value.u_color1.getHexString()}`,
-    color2: `#${uniforms.value.u_color2.getHexString()}`,
-    breathSpeed: uniforms.value.u_breathSpeed,
-    shake: uniforms.value.u_shake,
-    flash: uniforms.value.u_flash,
-    coreOffsetX: uniforms.value.u_coreOffsetX,
-    coreOffsetY: uniforms.value.u_coreOffsetY,
-    coreBrightness: uniforms.value.u_coreBrightness,
-    scaleAnimation: uniforms.value.u_scaleAnimation,
-  }
-}
+// Pepper's Ghost: black background for prism projection
+const clearColor = computed(() => props.pepperGhost ? '#000000' : 'transparent')
+const clearAlpha = computed(() => !props.pepperGhost)
+
+// Bloom: very subtle at low resolution to avoid washing out details
+// At 320x320 the blur kernel covers a huge proportion of the canvas
+const bloomIntensity = computed(() => props.pepperGhost ? 0.4 : 0.25)
+const bloomThreshold = computed(() => props.pepperGhost ? 0.6 : 0.7)
+
+// Slow Y-axis rotation for holographic depth perception through prism
+const groupRotationY = ref(0)
+const ROTATION_SPEED = 0.3 // radians per second
 
 let rafId: number | null = null
+let lastTime = 0
 
-function frameLoop() {
+function frameLoop(now: number) {
+  const dt = lastTime ? (now - lastTime) / 1000 : 1 / 60
+  lastTime = now
+
   updateAudioLevel(props.rawAudioLevel)
   updateSpeakingLevel(props.rawSpeakingLevel)
-  updateColors(1 / 60)
+  updateColors(dt)
+
+  // Continuous slow rotation - particles in 3D space create real parallax
+  groupRotationY.value += ROTATION_SPEED * dt
+
   rafId = requestAnimationFrame(frameLoop)
 }
 
 onMounted(() => {
+  lastTime = 0
   rafId = requestAnimationFrame(frameLoop)
   componentState.value = 'mounted'
 })
@@ -124,13 +130,13 @@ defineExpose({
     @click="onClick"
   >
     <TresCanvas
-      clear-color="transparent"
-      :alpha="true"
+      :clear-color="clearColor"
+      :alpha="clearAlpha"
       window-size
     >
       <TresPerspectiveCamera
         :position="[0, 0, cameraDistance]"
-        :fov="50"
+        :fov="70"
       />
 
       <OrbitControls
@@ -142,74 +148,69 @@ defineExpose({
         :max-distance="10"
       />
 
-      <!-- Ground shadow (NormalBlending, rendered first) -->
-      <GroundShadow
-        :energy="uniforms.u_energy"
-        :breath-speed="uniforms.u_breathSpeed"
-        :core-offset-x="uniforms.u_coreOffsetX"
-        :core-offset-y="uniforms.u_coreOffsetY"
-        :color1="`#${uniforms.u_color1.getHexString()}`"
-      />
+      <!-- Rotating group: slow Y-axis rotation creates real 3D parallax through prism -->
+      <TresGroup :rotation-y="groupRotationY">
+        <!-- Sparkler core: bright center point with diffraction spikes -->
+        <SparklerCore
+          :energy="uniforms.u_energy"
+          :audio-level="uniforms.u_audioLevel"
+          :speaking-level="uniforms.u_speakingLevel"
+          :color1="`#${uniforms.u_color1.getHexString()}`"
+          :color2="`#${uniforms.u_color2.getHexString()}`"
+          :breath-speed="uniforms.u_breathSpeed"
+          :shake="uniforms.u_shake"
+          :flash="uniforms.u_flash"
+          :core-offset-x="uniforms.u_coreOffsetX"
+          :core-offset-y="uniforms.u_coreOffsetY"
+          :core-brightness="uniforms.u_coreBrightness"
+          :scale-animation="uniforms.u_scaleAnimation"
+          :spike-length="uniforms.u_spikeLength"
+          :spike-rotation-speed="uniforms.u_spikeRotationSpeed"
+          :flicker-speed="uniforms.u_flickerSpeed"
+          :core-glow-size="uniforms.u_coreGlowSize"
+        />
 
-      <!-- Ground grid (perspective reference) -->
-      <GroundGrid
-        :core-offset-x="uniforms.u_coreOffsetX"
-        :color1="`#${uniforms.u_color1.getHexString()}`"
-      />
+        <!-- Spark rays: radiating lines from center -->
+        <SparkRays
+          :energy="uniforms.u_energy"
+          :orbit-speed="uniforms.u_orbitSpeed"
+          :core-offset-x="uniforms.u_coreOffsetX"
+          :core-offset-y="uniforms.u_coreOffsetY"
+          :audio-level="uniforms.u_audioLevel"
+          :speaking-level="uniforms.u_speakingLevel"
+          :color1="`#${uniforms.u_color1.getHexString()}`"
+          :color2="`#${uniforms.u_color2.getHexString()}`"
+          :core-brightness="uniforms.u_coreBrightness"
+          :ray-max-length="uniforms.u_rayMaxLength"
+          :ray-density="uniforms.u_rayDensity"
+          :flicker-speed="uniforms.u_flickerSpeed"
+          :pulse-rate="uniforms.u_pulseRate"
+        />
 
-      <!-- Multi-layer SpiritCore: back (soft depth halo) -->
-      <SpiritCore
-        v-bind="spiritCoreProps()"
-        :z-offset="-0.3"
-        :opacity-scale="0.3"
-        :scale-multiplier="1.15"
-      />
-
-      <!-- Multi-layer SpiritCore: main (crisp primary body) -->
-      <SpiritCore
-        v-bind="spiritCoreProps()"
-        :z-offset="0"
-        :opacity-scale="1.0"
-        :scale-multiplier="1.0"
-      />
-
-      <!-- Multi-layer SpiritCore: front (bright highlight) -->
-      <SpiritCore
-        v-bind="spiritCoreProps()"
-        :z-offset="0.15"
-        :opacity-scale="0.5"
-        :scale-multiplier="0.8"
-      />
-
-      <!-- Energy particles orbiting around sphere -->
-      <EnergyParticles
-        :energy="uniforms.u_energy"
-        :orbit-speed="uniforms.u_orbitSpeed"
-        :core-offset-x="uniforms.u_coreOffsetX"
-        :core-offset-y="uniforms.u_coreOffsetY"
-        :audio-level="uniforms.u_audioLevel"
-        :speaking-level="uniforms.u_speakingLevel"
-        :color1="`#${uniforms.u_color1.getHexString()}`"
-        :color2="`#${uniforms.u_color2.getHexString()}`"
-      />
-
-      <!-- Orbital wisps with trails -->
-      <OrbitalWisps
-        :energy="uniforms.u_energy"
-        :orbit-speed="uniforms.u_orbitSpeed"
-        :core-offset-x="uniforms.u_coreOffsetX"
-        :core-offset-y="uniforms.u_coreOffsetY"
-        :audio-level="uniforms.u_audioLevel"
-        :speaking-level="uniforms.u_speakingLevel"
-        :color1="`#${uniforms.u_color1.getHexString()}`"
-        :color2="`#${uniforms.u_color2.getHexString()}`"
-      />
+        <!-- Spark particles: flying sparks with gravity arc -->
+        <SparkParticles
+          :energy="uniforms.u_energy"
+          :orbit-speed="uniforms.u_orbitSpeed"
+          :core-offset-x="uniforms.u_coreOffsetX"
+          :core-offset-y="uniforms.u_coreOffsetY"
+          :audio-level="uniforms.u_audioLevel"
+          :speaking-level="uniforms.u_speakingLevel"
+          :color1="`#${uniforms.u_color1.getHexString()}`"
+          :color2="`#${uniforms.u_color2.getHexString()}`"
+          :gravity="uniforms.u_gravity"
+          :particle-spread="uniforms.u_particleSpread"
+          :ray-max-length="uniforms.u_rayMaxLength"
+          :tangential-speed="uniforms.u_tangentialSpeed"
+          :pulse-rate="uniforms.u_pulseRate"
+        />
+      </TresGroup>
 
       <EffectComposerPmndrs>
         <BloomPmndrs
-          :luminance-threshold="0.4"
-          :luminance-smoothing="0.3"
-          :intensity="0.5"
+          :luminance-threshold="bloomThreshold"
+          :luminance-smoothing="0.5"
+          :intensity="bloomIntensity"
+          :mipmap-blur="true"
         />
       </EffectComposerPmndrs>
     </TresCanvas>
