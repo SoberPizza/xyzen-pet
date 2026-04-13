@@ -12,6 +12,7 @@ export enum DisplayModelFormat {
   PMXZip = 'pmx-zip',
   PMXDirectory = 'pmx-directory',
   PMD = 'pmd',
+  Particles = 'particles',
 }
 
 export type DisplayModel
@@ -51,6 +52,7 @@ const displayModelsPresets: DisplayModel[] = [
   { id: 'preset-live2d-2', format: DisplayModelFormat.Live2dZip, type: 'url', url: presetLive2dFreeUrl, name: 'Hiyori (Free)', previewImage: presetLive2dPreview, importedAt: 1733113886840 },
   { id: 'preset-vrm-1', format: DisplayModelFormat.VRM, type: 'url', url: presetVrmAvatarAUrl, name: 'AvatarSample_A', previewImage: presetVrmAvatarAPreview, importedAt: 1733113886840 },
   { id: 'preset-vrm-2', format: DisplayModelFormat.VRM, type: 'url', url: presetVrmAvatarBUrl, name: 'AvatarSample_B', previewImage: presetVrmAvatarBPreview, importedAt: 1733113886840 },
+  { id: 'preset-particles-1', format: DisplayModelFormat.Particles, type: 'url', url: '', name: 'Light Orb (Holographic)', importedAt: 1733113886840 },
 ]
 
 export const useDisplayModelsStore = defineStore('display-models', () => {

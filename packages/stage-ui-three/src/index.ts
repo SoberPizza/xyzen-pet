@@ -1,3 +1,4 @@
+export { default as LightOrbScene } from './components/LightOrb/LightOrbScene.vue'
 export { default as ThreeScene } from './components/ThreeScene.vue'
 export * from './composables/hit-test'
 export * from './composables/render-target'
