@@ -1,0 +1,19 @@
+{
+  "name": "@proj-airi/esp32-bridge",
+  "type": "module",
+  "private": true,
+  "description": "Bridge between xiaozhi ESP32 device and AIRI services",
+  "scripts": {
+    "start": "tsx --env-file=.env --env-file-if-exists=.env.local src/index.ts",
+    "dev": "tsx --watch --env-file=.env --env-file-if-exists=.env.local src/index.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "ws": "catalog:"
+  },
+  "devDependencies": {
+    "@types/ws": "catalog:",
+    "tsx": "catalog:",
+    "typescript": "^5.9.3"
+  }
+}
