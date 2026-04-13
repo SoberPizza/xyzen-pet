@@ -1,3 +1,5 @@
+export { default as AddProviderDialog } from './add-provider-dialog.vue'
+export { default as EditProviderDialog } from './edit-provider-dialog.vue'
 export { default as ProviderAccountIdInput } from './provider-account-id-input.vue'
 export { default as ProviderAdvancedSettings } from './provider-advanced-settings.vue'
 export { default as ProviderApiKeyInput } from './provider-api-key-input.vue'

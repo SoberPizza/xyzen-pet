@@ -17,7 +17,7 @@ export const useOnboardingStore = defineStore('onboarding', () => {
   const authStore = useAuthStore()
 
   // Track if first-time setup has been completed or skipped
-  const hasCompletedSetup = useLocalStorage('onboarding/completed', false)
+  const hasCompletedSetup = useLocalStorage('onboarding/completed', true)
   const hasSkippedSetup = useLocalStorage('onboarding/skipped', false)
 
   // Track if we should show the setup dialog

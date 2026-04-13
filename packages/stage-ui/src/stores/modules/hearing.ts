@@ -2,6 +2,8 @@ import type { TranscriptionProviderWithExtraOptions } from '@xsai-ext/providers/
 import type { WithUnknown } from '@xsai/shared'
 import type { StreamTranscriptionResult, StreamTranscriptionOptions as XSAIStreamTranscriptionOptions } from '@xsai/stream-transcription'
 
+import type { EmotionPayload } from '../../constants/emotions'
+
 import { errorMessageFrom, tryCatch } from '@moeru/std'
 import { useLocalStorageManualReset } from '@proj-airi/stage-shared/composables'
 import { refManualReset } from '@vueuse/core'
@@ -13,7 +15,9 @@ import vadWorkletUrl from '../../workers/vad/process.worklet?worker&url'
 
 import { useProvidersStore } from '../providers'
 import { streamAliyunTranscription } from '../providers/aliyun/stream-transcription'
+import { streamSenseVoiceTranscription } from '../providers/sensevoice/stream-transcription'
 import { streamWebSpeechAPITranscription } from '../providers/web-speech-api'
+import { useHearingEmotionStore } from './hearing-emotion'
 
 function errorMessage(err: unknown): string {
   const msg = errorMessageFrom(err) ?? String(err)
@@ -91,6 +95,7 @@ export function filterTranscriptionByConfidence(
 
 const STREAM_TRANSCRIPTION_EXECUTORS: Record<string, StreamTranscription> = {
   'aliyun-nls-transcription': streamAliyunTranscription,
+  'sensevoice-local-server': streamSenseVoiceTranscription,
   // Web Speech API is handled specially in transcribeForMediaStream since it works directly with MediaStream
 }
 
@@ -154,6 +159,11 @@ export const useHearingStore = defineStore('hearing-store', () => {
     // but we still check to maintain consistency
     if (activeTranscriptionProvider.value === 'browser-web-speech-api') {
       return true // Web Speech API is ready if provider is selected and available
+    }
+
+    // SenseVoice local server has a fixed model; ready when provider is selected
+    if (activeTranscriptionProvider.value === 'sensevoice-local-server') {
+      return true
     }
 
     // For OpenAI Compatible providers, check provider config as fallback
@@ -293,6 +303,7 @@ export const useHearingSpeechInputPipeline = defineStore('modules:hearing:speech
   const error = ref<string>()
 
   const hearingStore = useHearingStore()
+  const hearingEmotionStore = useHearingEmotionStore()
   const { activeTranscriptionProvider, activeTranscriptionModel } = storeToRefs(hearingStore)
   const providersStore = useProvidersStore()
   const streamingSession = shallowRef<{
@@ -491,6 +502,8 @@ export const useHearingSpeechInputPipeline = defineStore('modules:hearing:speech
     idleTimeoutMs?: number
     onSentenceEnd?: (delta: string) => void
     onSpeechEnd?: (text: string) => void
+    /** Callback for emotion payloads detected by providers that support emotion recognition (e.g. SenseVoice). */
+    onEmotion?: (emotion: { name: string, intensity: number }) => void
   }) {
     console.info('[Hearing Pipeline] transcribeForMediaStream called', {
       supportsStreamInput: supportsStreamInput.value,
@@ -726,6 +739,10 @@ export const useHearingSpeechInputPipeline = defineStore('modules:hearing:speech
           providerOptions: {
             abortSignal: abortController.signal,
             ...options?.providerOptions,
+            onEmotion: (emotion: EmotionPayload) => {
+              hearingEmotionStore.pushEmotion(emotion)
+              options?.onEmotion?.(emotion)
+            },
           },
         },
       )

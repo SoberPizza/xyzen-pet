@@ -73,6 +73,7 @@ export interface ProviderMetadata {
   id: string
   order?: number
   category: 'chat' | 'embed' | 'speech' | 'transcription'
+  locality?: 'local' | 'cloud'
   tasks: string[]
   nameKey: string // i18n key for provider name
   name: string // Default name (fallback)
@@ -291,6 +292,7 @@ export const useProvidersStore = defineStore('providers', () => {
     },
     'app-local-audio-speech': buildOpenAICompatibleProvider({
       id: 'app-local-audio-speech',
+      locality: 'local',
       name: 'App (Local)',
       nameKey: 'settings.pages.providers.provider.app-local-audio-speech.title',
       descriptionKey: 'settings.pages.providers.provider.app-local-audio-speech.description',
@@ -322,6 +324,7 @@ export const useProvidersStore = defineStore('providers', () => {
     }),
     'app-local-audio-transcription': buildOpenAICompatibleProvider({
       id: 'app-local-audio-transcription',
+      locality: 'local',
       name: 'App (Local)',
       nameKey: 'settings.pages.providers.provider.app-local-audio-transcription.title',
       descriptionKey: 'settings.pages.providers.provider.app-local-audio-transcription.description',
@@ -353,6 +356,7 @@ export const useProvidersStore = defineStore('providers', () => {
     }),
     'browser-local-audio-speech': buildOpenAICompatibleProvider({
       id: 'browser-local-audio-speech',
+      locality: 'local',
       name: 'Browser (Local)',
       nameKey: 'settings.pages.providers.provider.browser-local-audio-speech.title',
       descriptionKey: 'settings.pages.providers.provider.browser-local-audio-speech.description',
@@ -384,6 +388,7 @@ export const useProvidersStore = defineStore('providers', () => {
     }),
     'browser-local-audio-transcription': buildOpenAICompatibleProvider({
       id: 'browser-local-audio-transcription',
+      locality: 'local',
       name: 'Browser (Local)',
       nameKey: 'settings.pages.providers.provider.browser-local-audio-transcription.title',
       descriptionKey: 'settings.pages.providers.provider.browser-local-audio-transcription.description',
@@ -836,6 +841,7 @@ export const useProvidersStore = defineStore('providers', () => {
     },
     'browser-web-speech-api': {
       id: 'browser-web-speech-api',
+      locality: 'local',
       category: 'transcription',
       tasks: ['speech-to-text', 'automatic-speech-recognition', 'asr', 'stt', 'streaming-transcription'],
       nameKey: 'settings.pages.providers.provider.browser-web-speech-api.title',
@@ -907,6 +913,69 @@ export const useProvidersStore = defineStore('providers', () => {
             errors: [],
             reason: '',
             valid: true,
+          }
+        },
+      },
+    },
+    'sensevoice-local-server': {
+      id: 'sensevoice-local-server',
+      locality: 'local',
+      category: 'transcription',
+      tasks: ['speech-to-text', 'automatic-speech-recognition', 'asr', 'stt', 'streaming-transcription'],
+      nameKey: 'settings.pages.providers.provider.sensevoice-local-server.title',
+      name: 'SenseVoice (Local)',
+      descriptionKey: 'settings.pages.providers.provider.sensevoice-local-server.description',
+      description: 'FunASR SenseVoice local server with emotion recognition',
+      icon: 'i-carbon:microphone',
+      defaultOptions: () => ({
+        baseUrl: 'ws://localhost:10095',
+      }),
+      transcriptionFeatures: {
+        supportsGenerate: false,
+        supportsStreamOutput: true,
+        supportsStreamInput: true,
+      },
+      createProvider: async (config) => {
+        const baseUrl = typeof config.baseUrl === 'string' ? config.baseUrl.trim() : 'ws://localhost:10095'
+
+        return {
+          transcription: (_model: string, extraOptions?: Record<string, unknown>) => ({
+            baseURL: baseUrl,
+            model: 'SenseVoiceSmall',
+            ...extraOptions,
+          }),
+        } as TranscriptionProviderWithExtraOptions<string, any>
+      },
+      capabilities: {
+        listModels: async () => {
+          return [
+            {
+              id: 'SenseVoiceSmall',
+              name: 'SenseVoice Small',
+              provider: 'sensevoice-local-server',
+              description: 'Local SenseVoice model with emotion recognition via FunASR server.',
+              contextLength: 0,
+              deprecated: false,
+            },
+          ]
+        },
+      },
+      validators: {
+        chatPingCheckAvailable: false,
+        validateProviderConfig: (config) => {
+          const baseUrl = typeof config.baseUrl === 'string' ? config.baseUrl.trim() : ''
+          const errors: Error[] = []
+
+          if (!baseUrl)
+            errors.push(new Error('WebSocket URL is required (e.g. ws://localhost:10095).'))
+
+          if (baseUrl && !baseUrl.startsWith('ws://') && !baseUrl.startsWith('wss://'))
+            errors.push(new Error('URL must start with ws:// or wss://.'))
+
+          return {
+            errors,
+            reason: errors.map(e => e.message).join(', '),
+            valid: errors.length === 0,
           }
         },
       },
@@ -1542,6 +1611,7 @@ export const useProvidersStore = defineStore('providers', () => {
     },
     'kokoro-local': {
       id: 'kokoro-local',
+      locality: 'local',
       category: 'speech',
       tasks: ['text-to-speech'],
       nameKey: 'settings.pages.providers.provider.kokoro-local.title',
@@ -2240,6 +2310,37 @@ export const useProvidersStore = defineStore('providers', () => {
     return persistedProvidersMetadata.value.filter(metadata => metadata.category === 'transcription')
   })
 
+  // Local/cloud split computed properties for inline provider management in module pages
+  const localChatProviders = computed(() => {
+    return availableProvidersMetadata.value.filter(m => m.locality === 'local' && m.category === 'chat')
+  })
+  const cloudChatProviders = computed(() => {
+    return persistedProvidersMetadata.value.filter(m => m.locality !== 'local' && m.category === 'chat')
+  })
+  const localSpeechProviders = computed(() => {
+    return availableProvidersMetadata.value.filter(m => m.locality === 'local' && m.category === 'speech')
+  })
+  const cloudSpeechProviders = computed(() => {
+    return persistedProvidersMetadata.value.filter(m => m.locality !== 'local' && m.category === 'speech')
+  })
+  const localTranscriptionProviders = computed(() => {
+    return availableProvidersMetadata.value.filter(m => m.locality === 'local' && m.category === 'transcription')
+  })
+  const cloudTranscriptionProviders = computed(() => {
+    return persistedProvidersMetadata.value.filter(m => m.locality !== 'local' && m.category === 'transcription')
+  })
+
+  // All cloud providers available for adding (not just persisted ones) — used by the add dialog
+  const allCloudChatProviders = computed(() => {
+    return availableProvidersMetadata.value.filter(m => m.locality !== 'local' && m.category === 'chat')
+  })
+  const allCloudSpeechProviders = computed(() => {
+    return availableProvidersMetadata.value.filter(m => m.locality !== 'local' && m.category === 'speech')
+  })
+  const allCloudTranscriptionProviders = computed(() => {
+    return availableProvidersMetadata.value.filter(m => m.locality !== 'local' && m.category === 'transcription')
+  })
+
   function getProviderConfig(providerId: string) {
     return providerCredentials.value[providerId]
   }
@@ -2283,5 +2384,14 @@ export const useProvidersStore = defineStore('providers', () => {
     persistedChatProvidersMetadata,
     persistedSpeechProvidersMetadata,
     persistedTranscriptionProvidersMetadata,
+    localChatProviders,
+    cloudChatProviders,
+    localSpeechProviders,
+    cloudSpeechProviders,
+    localTranscriptionProviders,
+    cloudTranscriptionProviders,
+    allCloudChatProviders,
+    allCloudSpeechProviders,
+    allCloudTranscriptionProviders,
   }
 })

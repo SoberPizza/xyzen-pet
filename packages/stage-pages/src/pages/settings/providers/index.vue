@@ -142,7 +142,7 @@ meta:
   subtitleKey: settings.title
   descriptionKey: settings.pages.providers.description
   icon: i-solar:box-minimalistic-bold-duotone
-  settingsEntry: true
+  # settingsEntry removed — provider management is now inline in module pages
   order: 6
   stageTransition:
     name: slide

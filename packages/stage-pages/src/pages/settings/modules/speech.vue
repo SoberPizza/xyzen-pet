@@ -2,7 +2,9 @@
 import type { SpeechProviderWithExtraOptions } from '@xsai-ext/providers/utils'
 
 import {
+  AddProviderDialog,
   Alert,
+  EditProviderDialog,
   ErrorContainer,
   RadioCardManySelect,
   RadioCardSimple,
@@ -23,12 +25,11 @@ import { generateSpeech } from '@xsai/generate-speech'
 import { storeToRefs } from 'pinia'
 import { onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { RouterLink } from 'vue-router'
 
 const { t } = useI18n()
 const providersStore = useProvidersStore()
 const speechStore = useSpeechStore()
-const { configuredSpeechProvidersMetadata } = storeToRefs(providersStore)
+const { localSpeechProviders, cloudSpeechProviders, allCloudSpeechProviders, configuredProviders } = storeToRefs(providersStore)
 const {
   activeSpeechProvider,
   activeSpeechModel,
@@ -47,6 +48,28 @@ const {
 } = storeToRefs(speechStore)
 
 const { trackProviderClick } = useAnalytics()
+
+const showAddDialog = ref(false)
+const showEditDialog = ref(false)
+const editingProviderId = ref('')
+
+function handleEditProvider(providerId: string) {
+  editingProviderId.value = providerId
+  showEditDialog.value = true
+}
+
+function handleProviderAdded(providerId: string) {
+  activeSpeechProvider.value = providerId
+}
+
+function handleSpeechProviderDeleted() {
+  if (editingProviderId.value === activeSpeechProvider.value) {
+    activeSpeechProvider.value = 'speech-noop'
+    activeSpeechModel.value = ''
+    activeSpeechVoiceId.value = ''
+    activeSpeechVoice.value = undefined
+  }
+}
 
 const voiceSearchQuery = ref('')
 const useSSML = ref(false)
@@ -268,13 +291,56 @@ function handleDeleteProvider(providerId: string) {
               <span>{{ t('settings.pages.modules.speech.sections.section.provider-voice-selection.description') }}</span>
             </div>
           </div>
-          <div max-w-full>
+          <!-- Local Speech Providers -->
+          <div v-if="localSpeechProviders.length > 0" :class="['max-w-full']">
+            <h3 :class="['text-sm font-medium text-neutral-400 dark:text-neutral-500 mb-2']">
+              {{ t('settings.pages.modules.common.providers.local.title') }}
+            </h3>
             <fieldset
-              v-if="configuredSpeechProvidersMetadata.length > 0" flex="~ row gap-4" :style="{ 'scrollbar-width': 'none' }"
-              min-w-0 of-x-scroll scroll-smooth role="radiogroup"
+              :class="['flex flex-row gap-4 min-w-0 of-x-scroll scroll-smooth']"
+              :style="{ 'scrollbar-width': 'none' }"
+              role="radiogroup"
             >
               <RadioCardSimple
-                v-for="metadata in configuredSpeechProvidersMetadata"
+                v-for="metadata in localSpeechProviders"
+                :id="metadata.id"
+                :key="metadata.id"
+                v-model="activeSpeechProvider"
+                name="speech-provider"
+                :value="metadata.id"
+                :title="metadata.localizedName || 'Unknown'"
+                :description="metadata.localizedDescription"
+                @click="trackProviderClick(metadata.id, 'speech')"
+              >
+                <template #bottomRight>
+                  <div
+                    :class="[
+                      'rounded px-2 py-0.5 text-xs font-medium',
+                      configuredProviders[metadata.id]
+                        ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300'
+                        : 'bg-neutral-100 text-neutral-500 dark:bg-neutral-800/60 dark:text-neutral-400',
+                    ]"
+                  >
+                    {{ configuredProviders[metadata.id] ? t('settings.pages.modules.common.providers.local.available') : t('settings.pages.modules.common.providers.local.unavailable') }}
+                  </div>
+                </template>
+              </RadioCardSimple>
+            </fieldset>
+          </div>
+
+          <!-- Cloud Speech Providers -->
+          <div :class="['max-w-full']">
+            <h3 :class="['text-sm font-medium text-neutral-400 dark:text-neutral-500 mb-2']">
+              {{ t('settings.pages.modules.common.providers.cloud.title') }}
+            </h3>
+            <fieldset
+              v-if="cloudSpeechProviders.length > 0"
+              :class="['flex flex-row gap-4 min-w-0 of-x-scroll scroll-smooth']"
+              :style="{ 'scrollbar-width': 'none' }"
+              role="radiogroup"
+            >
+              <RadioCardSimple
+                v-for="metadata in cloudSpeechProviders"
                 :id="metadata.id"
                 :key="metadata.id"
                 v-model="activeSpeechProvider"
@@ -285,45 +351,50 @@ function handleDeleteProvider(providerId: string) {
                 @click="trackProviderClick(metadata.id, 'speech')"
               >
                 <template #topRight>
-                  <button
-                    v-if="metadata.id !== 'speech-noop'"
-                    type="button"
-                    class="rounded bg-neutral-100 p-1 text-neutral-600 transition-colors dark:bg-neutral-800/60 hover:bg-neutral-200 dark:text-neutral-300 dark:hover:bg-neutral-700/60"
-                    @click.stop.prevent="handleDeleteProvider(metadata.id)"
-                  >
-                    <div i-solar:trash-bin-trash-bold-duotone class="text-base" />
-                  </button>
+                  <div :class="['flex items-center gap-1']">
+                    <button
+                      v-if="metadata.id !== 'speech-noop'"
+                      type="button"
+                      :class="['rounded bg-neutral-100 p-1 text-neutral-600 transition-colors dark:bg-neutral-800/60 hover:bg-neutral-200 dark:text-neutral-300 dark:hover:bg-neutral-700/60']"
+                      @click.stop.prevent="handleEditProvider(metadata.id)"
+                    >
+                      <div :class="['text-base i-solar:pen-bold-duotone']" />
+                    </button>
+                    <button
+                      v-if="metadata.id !== 'speech-noop'"
+                      type="button"
+                      :class="['rounded bg-neutral-100 p-1 text-neutral-600 transition-colors dark:bg-neutral-800/60 hover:bg-neutral-200 dark:text-neutral-300 dark:hover:bg-neutral-700/60']"
+                      @click.stop.prevent="handleDeleteProvider(metadata.id)"
+                    >
+                      <div :class="['text-base i-solar:trash-bin-trash-bold-duotone']" />
+                    </button>
+                  </div>
                 </template>
               </RadioCardSimple>
-              <RouterLink
-                to="/settings/providers#speech"
-                border="2px solid"
-                class="border-neutral-100 bg-white dark:border-neutral-900 hover:border-primary-500/30 dark:bg-neutral-900/20 dark:hover:border-primary-400/30"
-                flex="~ col items-center justify-center"
-                transition="all duration-200 ease-in-out"
-                relative min-w-50 w-fit rounded-xl p-4
+              <button
+                type="button"
+                :class="['relative min-w-50 w-fit rounded-xl border-2 border-neutral-100 bg-white p-4 transition-all duration-200 ease-in-out hover:border-primary-500/30 dark:border-neutral-900 dark:bg-neutral-900/20 dark:hover:border-primary-400/30 flex flex-col items-center justify-center']"
+                @click="showAddDialog = true"
               >
-                <div i-solar:add-circle-line-duotone class="text-2xl text-neutral-500 dark:text-neutral-500" />
+                <div :class="['text-2xl text-neutral-500 dark:text-neutral-500 i-solar:add-circle-line-duotone']" />
                 <div
-                  class="bg-dotted-neutral-200/80 dark:bg-dotted-neutral-700/50"
-                  absolute inset-0 z--1
-                  style="background-size: 10px 10px; mask-image: linear-gradient(165deg, white 30%, transparent 50%);"
+                  :class="['absolute inset-0 z--1 bg-dotted-neutral-200/80 dark:bg-dotted-neutral-700/50']"
+                  :style="{ 'background-size': '10px 10px', 'mask-image': 'linear-gradient(165deg, white 30%, transparent 50%)' }"
                 />
-              </RouterLink>
+              </button>
             </fieldset>
             <div v-else>
-              <RouterLink
-                class="flex items-center gap-3 rounded-lg p-4" border="2 dashed neutral-200 dark:neutral-800"
-                bg="neutral-50 dark:neutral-800" transition="colors duration-200 ease-in-out" to="/settings/providers"
+              <button
+                type="button"
+                :class="['flex w-full items-center gap-3 rounded-lg p-4 border-2 border-dashed border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-800 transition-colors duration-200 ease-in-out']"
+                @click="showAddDialog = true"
               >
-                <div i-solar:warning-circle-line-duotone class="text-2xl text-amber-500 dark:text-amber-400" />
-                <div class="flex flex-col">
-                  <span class="font-medium">No Speech Providers Configured</span>
-                  <span class="text-sm text-neutral-400 dark:text-neutral-500">Click here to set up your speech
-                    providers</span>
+                <div :class="['text-2xl text-primary-500 dark:text-primary-400 i-solar:add-circle-line-duotone']" />
+                <div :class="['flex flex-col']">
+                  <span :class="['font-medium']">{{ t('settings.pages.modules.common.providers.cloud.no_providers') }}</span>
+                  <span :class="['text-sm text-neutral-400 dark:text-neutral-500']">{{ t('settings.pages.modules.common.providers.cloud.no_providers_description') }}</span>
                 </div>
-                <div i-solar:arrow-right-line-duotone class="ml-auto text-xl text-neutral-400 dark:text-neutral-500" />
-              </RouterLink>
+              </button>
             </div>
           </div>
         </div>
@@ -638,6 +709,19 @@ function handleDeleteProvider(providerId: string) {
       </div>
     </div>
   </div>
+
+  <!-- Dialogs -->
+  <AddProviderDialog
+    v-model="showAddDialog"
+    category="speech"
+    :available-providers="allCloudSpeechProviders"
+    @added="handleProviderAdded"
+  />
+  <EditProviderDialog
+    v-model="showEditDialog"
+    :provider-id="editingProviderId"
+    @deleted="handleSpeechProviderDeleted"
+  />
 
   <div
     v-motion

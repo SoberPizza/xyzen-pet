@@ -103,6 +103,7 @@ export function convertProviderDefinitionToMetadata(
     id: definition.id,
     order: definition.order,
     category,
+    locality: definition.locality,
     tasks: definition.tasks,
     nameKey: definition.nameLocalize({ t: keyExtractor }),
     name: definition.name,

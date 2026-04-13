@@ -20,6 +20,7 @@ type LMStudioConfig = z.input<typeof lmStudioConfigSchema>
 export const providerLmStudio = defineProvider<LMStudioConfig>({
   id: 'lm-studio',
   order: 3,
+  locality: 'local',
   name: 'LM Studio',
   nameLocalize: ({ t }) => t('settings.pages.providers.provider.lm-studio.title'),
   description: 'LM Studio',

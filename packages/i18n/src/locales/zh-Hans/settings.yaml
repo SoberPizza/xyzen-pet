@@ -355,6 +355,35 @@ pages:
             warmup:
               description: 在检测节拍之前进行预热，以提高准确性
               label: 预热
+    common:
+      providers:
+        local:
+          title: 本地
+          available: 可用
+          unavailable: 不可用
+        cloud:
+          title: 云端
+          add: 添加云端服务商
+          no_providers: 未配置云端服务商
+          no_providers_description: 点击「添加云端服务商」来设置您的第一个服务商
+          dialog:
+            title: 添加云端服务商
+            description: 选择服务商并输入您的凭据
+            select_provider: 选择服务商
+            api_key: API 密钥
+            api_key_description: 此服务商的 API 密钥
+            base_url: 基础 URL
+            base_url_description: API 端点 URL（不确定请使用默认值）
+            cancel: 取消
+            save: 保存
+          edit:
+            title: '编辑 {provider}'
+            description: 更新凭据并测试连接
+            test: 测试连接
+            test_success: 连接成功！
+            delete: 删除
+            confirm_delete: 确认删除
+            cancel_delete: 取消
     consciousness:
       description: 人格设定、使用的模型等配置
       sections:
@@ -910,6 +939,12 @@ pages:
       aliyun-nls:
         description: Aliyun 智能语音服务
         title: Aliyun 智能语音服务
+      sensevoice-local-server:
+        title: SenseVoice（本地）
+        description: FunASR SenseVoice 本地服务器，支持情绪识别
+        url-label: WebSocket 地址
+        setup-title: 快速设置
+        ready: 配置就绪
       browser-web-speech-api:
         description: 浏览器原生STT (需要 Chrome/Edge/Safari)
         title: Web 语音API

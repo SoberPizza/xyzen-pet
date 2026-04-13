@@ -372,6 +372,35 @@ pages:
             warmup:
               description: Whether to warm up before detecting beats for better accuracy.
               label: Warmup
+    common:
+      providers:
+        local:
+          title: Local
+          available: Available
+          unavailable: Not Available
+        cloud:
+          title: Cloud
+          add: Add Cloud Provider
+          no_providers: No cloud providers configured
+          no_providers_description: Click "Add Cloud Provider" to set up your first provider
+          dialog:
+            title: Add Cloud Provider
+            description: Select a provider and enter your credentials
+            select_provider: Select Provider
+            api_key: API Key
+            api_key_description: Your API key for this provider
+            base_url: Base URL
+            base_url_description: API endpoint URL (use default if unsure)
+            cancel: Cancel
+            save: Save
+          edit:
+            title: 'Edit {provider}'
+            description: Update credentials and test your connection
+            test: Test Connection
+            test_success: Connection successful!
+            delete: Delete
+            confirm_delete: Confirm Delete
+            cancel_delete: Cancel
     consciousness:
       description: Personality, desired model, etc.
       sections:
@@ -957,6 +986,12 @@ pages:
       aliyun-nls:
         description: Aliyun NLS
         title: Aliyun NLS
+      sensevoice-local-server:
+        title: SenseVoice (Local)
+        description: FunASR SenseVoice local server with emotion recognition
+        url-label: WebSocket URL
+        setup-title: Quick Setup
+        ready: Configuration ready
       browser-web-speech-api:
         description: Browser-native STT (requires Chrome/Edge/Safari)
         title: Web Speech API

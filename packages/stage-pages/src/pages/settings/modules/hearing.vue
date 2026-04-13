@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import workletUrl from '@proj-airi/stage-ui/workers/vad/process.worklet?worker&url'
 
-import { Alert, ErrorContainer, LevelMeter, RadioCardManySelect, RadioCardSimple, TestDummyMarker, ThresholdMeter, TimeSeriesChart } from '@proj-airi/stage-ui/components'
+import { AddProviderDialog, Alert, EditProviderDialog, ErrorContainer, LevelMeter, RadioCardManySelect, RadioCardSimple, TestDummyMarker, ThresholdMeter, TimeSeriesChart } from '@proj-airi/stage-ui/components'
 import { useAnalytics, useAudioAnalyzer, useAudioRecorder } from '@proj-airi/stage-ui/composables'
 import { useVAD } from '@proj-airi/stage-ui/stores/ai/models/vad'
 import { useAudioContext } from '@proj-airi/stage-ui/stores/audio'
@@ -32,9 +32,29 @@ const {
   verboseJsonNotSupported,
 } = storeToRefs(hearingStore)
 const providersStore = useProvidersStore()
-const { configuredTranscriptionProvidersMetadata } = storeToRefs(providersStore)
+const { localTranscriptionProviders, cloudTranscriptionProviders, allCloudTranscriptionProviders, configuredProviders } = storeToRefs(providersStore)
 
 const { trackProviderClick } = useAnalytics()
+
+const showAddDialog = ref(false)
+const showEditDialog = ref(false)
+const editingProviderId = ref('')
+
+function handleEditProvider(providerId: string) {
+  editingProviderId.value = providerId
+  showEditDialog.value = true
+}
+
+function handleProviderAdded(providerId: string) {
+  activeTranscriptionProvider.value = providerId
+}
+
+function handleTranscriptionProviderDeleted() {
+  if (editingProviderId.value === activeTranscriptionProvider.value) {
+    activeTranscriptionProvider.value = ''
+    activeTranscriptionModel.value = ''
+  }
+}
 const { stopStream, startStream } = useSettingsAudioDevice()
 const { audioInputs, selectedAudioInput, stream } = storeToRefs(useSettingsAudioDevice())
 const { startRecord, stopRecord, onStopRecord } = useAudioRecorder(stream)
@@ -510,30 +530,28 @@ onUnmounted(() => {
           />
         </div>
 
-        <div flex="~ col gap-4">
+        <div :class="['flex flex-col gap-4']">
           <div>
-            <h2 class="text-lg text-neutral-500 md:text-2xl dark:text-neutral-500">
+            <h2 :class="['text-lg text-neutral-500 md:text-2xl dark:text-neutral-500']">
               {{ t('settings.pages.providers.title') }}
             </h2>
-            <div text="neutral-400 dark:neutral-400">
+            <div :class="['text-neutral-400 dark:text-neutral-400']">
               <span>{{ t('settings.pages.modules.hearing.sections.section.provider-selection.description') }}</span>
             </div>
           </div>
-          <div max-w-full>
-            <!--
-            fieldset has min-width set to --webkit-min-container, in order to use over flow scroll,
-            we need to set the min-width to 0.
-            See also: https://stackoverflow.com/a/33737340
-          -->
+
+          <!-- Local Transcription Providers -->
+          <div v-if="localTranscriptionProviders.length > 0" :class="['max-w-full']">
+            <h3 :class="['text-sm font-medium text-neutral-400 dark:text-neutral-500 mb-2']">
+              {{ t('settings.pages.modules.common.providers.local.title') }}
+            </h3>
             <fieldset
-              v-if="configuredTranscriptionProvidersMetadata.length > 0"
-              flex="~ row gap-4"
+              :class="['flex flex-row gap-4 min-w-0 of-x-scroll scroll-smooth']"
               :style="{ 'scrollbar-width': 'none' }"
-              min-w-0 of-x-scroll scroll-smooth
               role="radiogroup"
             >
               <RadioCardSimple
-                v-for="metadata in configuredTranscriptionProvidersMetadata"
+                v-for="metadata in localTranscriptionProviders"
                 :id="metadata.id"
                 :key="metadata.id"
                 v-model="activeTranscriptionProvider"
@@ -542,40 +560,81 @@ onUnmounted(() => {
                 :title="metadata.localizedName || 'Unknown'"
                 :description="metadata.localizedDescription"
                 @click="trackProviderClick(metadata.id, 'hearing')"
-              />
-              <RouterLink
-                to="/settings/providers#transcription"
-                border="2px solid"
-                class="border-neutral-100 bg-white dark:border-neutral-900 hover:border-primary-500/30 dark:bg-neutral-900/20 dark:hover:border-primary-400/30"
-
-                flex="~ col items-center justify-center"
-
-                transition="all duration-200 ease-in-out"
-                relative min-w-50 w-fit rounded-xl p-4
               >
-                <div i-solar:add-circle-line-duotone class="text-2xl text-neutral-500 dark:text-neutral-500" />
+                <template #bottomRight>
+                  <div
+                    :class="[
+                      'rounded px-2 py-0.5 text-xs font-medium',
+                      configuredProviders[metadata.id]
+                        ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300'
+                        : 'bg-neutral-100 text-neutral-500 dark:bg-neutral-800/60 dark:text-neutral-400',
+                    ]"
+                  >
+                    {{ configuredProviders[metadata.id] ? t('settings.pages.modules.common.providers.local.available') : t('settings.pages.modules.common.providers.local.unavailable') }}
+                  </div>
+                </template>
+              </RadioCardSimple>
+            </fieldset>
+          </div>
+
+          <!-- Cloud Transcription Providers -->
+          <div :class="['max-w-full']">
+            <h3 :class="['text-sm font-medium text-neutral-400 dark:text-neutral-500 mb-2']">
+              {{ t('settings.pages.modules.common.providers.cloud.title') }}
+            </h3>
+            <fieldset
+              v-if="cloudTranscriptionProviders.length > 0"
+              :class="['flex flex-row gap-4 min-w-0 of-x-scroll scroll-smooth']"
+              :style="{ 'scrollbar-width': 'none' }"
+              role="radiogroup"
+            >
+              <RadioCardSimple
+                v-for="metadata in cloudTranscriptionProviders"
+                :id="metadata.id"
+                :key="metadata.id"
+                v-model="activeTranscriptionProvider"
+                name="provider"
+                :value="metadata.id"
+                :title="metadata.localizedName || 'Unknown'"
+                :description="metadata.localizedDescription"
+                @click="trackProviderClick(metadata.id, 'hearing')"
+              >
+                <template #topRight>
+                  <div :class="['flex items-center gap-1']">
+                    <button
+                      type="button"
+                      :class="['rounded bg-neutral-100 p-1 text-neutral-600 transition-colors dark:bg-neutral-800/60 hover:bg-neutral-200 dark:text-neutral-300 dark:hover:bg-neutral-700/60']"
+                      @click.stop.prevent="handleEditProvider(metadata.id)"
+                    >
+                      <div :class="['text-base i-solar:pen-bold-duotone']" />
+                    </button>
+                  </div>
+                </template>
+              </RadioCardSimple>
+              <button
+                type="button"
+                :class="['relative min-w-50 w-fit rounded-xl border-2 border-neutral-100 bg-white p-4 transition-all duration-200 ease-in-out hover:border-primary-500/30 dark:border-neutral-900 dark:bg-neutral-900/20 dark:hover:border-primary-400/30 flex flex-col items-center justify-center']"
+                @click="showAddDialog = true"
+              >
+                <div :class="['text-2xl text-neutral-500 dark:text-neutral-500 i-solar:add-circle-line-duotone']" />
                 <div
-                  class="bg-dotted-neutral-200/80 dark:bg-dotted-neutral-700/50"
-                  absolute inset-0 z--1
-                  style="background-size: 10px 10px; mask-image: linear-gradient(165deg, white 30%, transparent 50%);"
+                  :class="['absolute inset-0 z--1 bg-dotted-neutral-200/80 dark:bg-dotted-neutral-700/50']"
+                  :style="{ 'background-size': '10px 10px', 'mask-image': 'linear-gradient(165deg, white 30%, transparent 50%)' }"
                 />
-              </RouterLink>
+              </button>
             </fieldset>
             <div v-else>
-              <RouterLink
-                class="flex items-center gap-3 rounded-lg p-4"
-                border="2 dashed neutral-200 dark:neutral-800"
-                bg="neutral-50 dark:neutral-800"
-                transition="colors duration-200 ease-in-out"
-                to="/settings/providers"
+              <button
+                type="button"
+                :class="['flex w-full items-center gap-3 rounded-lg p-4 border-2 border-dashed border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-800 transition-colors duration-200 ease-in-out']"
+                @click="showAddDialog = true"
               >
-                <div i-solar:warning-circle-line-duotone class="text-2xl text-amber-500 dark:text-amber-400" />
-                <div class="flex flex-col">
-                  <span class="font-medium">No Providers Configured</span>
-                  <span class="text-sm text-neutral-400 dark:text-neutral-500">Click here to set up your Transcription providers</span>
+                <div :class="['text-2xl text-primary-500 dark:text-primary-400 i-solar:add-circle-line-duotone']" />
+                <div :class="['flex flex-col']">
+                  <span :class="['font-medium']">{{ t('settings.pages.modules.common.providers.cloud.no_providers') }}</span>
+                  <span :class="['text-sm text-neutral-400 dark:text-neutral-500']">{{ t('settings.pages.modules.common.providers.cloud.no_providers_description') }}</span>
                 </div>
-                <div i-solar:arrow-right-line-duotone class="ml-auto text-xl text-neutral-400 dark:text-neutral-500" />
-              </RouterLink>
+              </button>
             </div>
           </div>
         </div>
@@ -947,7 +1006,7 @@ onUnmounted(() => {
             </div>
 
             <div v-if="activeTranscriptionProvider" class="text-xs text-neutral-500 dark:text-neutral-400">
-              <div>Provider: <span class="font-medium">{{ configuredTranscriptionProvidersMetadata.find(p => p.id === activeTranscriptionProvider)?.localizedName || activeTranscriptionProvider }}</span></div>
+              <div>Provider: <span class="font-medium">{{ [...localTranscriptionProviders, ...cloudTranscriptionProviders].find(p => p.id === activeTranscriptionProvider)?.localizedName || activeTranscriptionProvider }}</span></div>
               <div v-if="activeTranscriptionModel">
                 Model: <span class="font-medium">{{ activeTranscriptionModel }}</span>
               </div>
@@ -958,6 +1017,19 @@ onUnmounted(() => {
       </div>
     </div>
   </div>
+
+  <!-- Dialogs -->
+  <AddProviderDialog
+    v-model="showAddDialog"
+    category="transcription"
+    :available-providers="allCloudTranscriptionProviders"
+    @added="handleProviderAdded"
+  />
+  <EditProviderDialog
+    v-model="showEditDialog"
+    :provider-id="editingProviderId"
+    @deleted="handleTranscriptionProviderDeleted"
+  />
 </template>
 
 <route lang="yaml">

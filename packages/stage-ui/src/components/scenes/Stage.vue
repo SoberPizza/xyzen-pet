@@ -31,6 +31,7 @@ import { EMOTION_EmotionMotionName_value, EMOTION_VRMExpressionName_value, Emoti
 import { useAudioContext, useSpeakingStore } from '../../stores/audio'
 import { useChatOrchestratorStore } from '../../stores/chat'
 import { useAiriCardStore } from '../../stores/modules'
+import { useHearingEmotionStore } from '../../stores/modules/hearing-emotion'
 import { useSpeechStore } from '../../stores/modules/speech'
 import { useProvidersStore } from '../../stores/providers'
 import { useSettings } from '../../stores/settings'
@@ -143,6 +144,13 @@ const emotionMessageContentQueue = useEmotionsMessageQueue(emotionsQueue)
 emotionMessageContentQueue.onHandlerEvent('emotion', (emotion) => {
   // eslint-disable-next-line no-console
   console.debug('emotion detected', emotion)
+})
+
+// Route STT-detected emotions (e.g. SenseVoice) into the expression system.
+// These emotions drive VRM/Live2D expressions without being injected into LLM context.
+const hearingEmotionStore = useHearingEmotionStore()
+const removeHearingEmotionListener = hearingEmotionStore.onEmotion((emotion) => {
+  emotionsQueue.enqueue(emotion)
 })
 
 const delaysQueue = useDelayMessageQueue()
@@ -553,6 +561,7 @@ function readRenderTargetRegionAtClientPoint(clientX: number, clientY: number, r
 
 onUnmounted(() => {
   resetLive2dLipSync()
+  removeHearingEmotionListener()
   chatHookCleanups.forEach(dispose => dispose?.())
   viewUpdateCleanups.forEach(dispose => dispose?.())
 })

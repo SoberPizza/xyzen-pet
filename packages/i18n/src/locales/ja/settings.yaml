@@ -355,6 +355,35 @@ pages:
             warmup:
               description: より高い精度のために、ビートを検出する前にウォームアップを行うべきかどうか。
               label: ウォームアップ
+    common:
+      providers:
+        local:
+          title: ローカル
+          available: 利用可能
+          unavailable: 利用不可
+        cloud:
+          title: クラウド
+          add: クラウドプロバイダーを追加
+          no_providers: クラウドプロバイダーが設定されていません
+          no_providers_description: 「クラウドプロバイダーを追加」をクリックして最初のプロバイダーを設定してください
+          dialog:
+            title: クラウドプロバイダーを追加
+            description: プロバイダーを選択して認証情報を入力してください
+            select_provider: プロバイダーを選択
+            api_key: APIキー
+            api_key_description: このプロバイダーのAPIキー
+            base_url: ベースURL
+            base_url_description: APIエンドポイントURL（不明な場合はデフォルトを使用）
+            cancel: キャンセル
+            save: 保存
+          edit:
+            title: '{provider} を編集'
+            description: 認証情報を更新して接続をテスト
+            test: 接続テスト
+            test_success: 接続成功！
+            delete: 削除
+            confirm_delete: 削除を確認
+            cancel_delete: キャンセル
     consciousness:
       description: 性格、希望するモデルなど。
       sections:
@@ -910,6 +939,12 @@ pages:
       aliyun-nls:
         description: Aliyun NLS
         title: Aliyun NLS
+      sensevoice-local-server:
+        title: SenseVoice（ローカル）
+        description: FunASR SenseVoice ローカルサーバー（感情認識対応）
+        url-label: WebSocket URL
+        setup-title: クイックセットアップ
+        ready: 設定完了
       browser-web-speech-api:
         description: ブラウザネイティブSTT (Chrome/Edge/Safariが必要)
         title: Web Speech API
