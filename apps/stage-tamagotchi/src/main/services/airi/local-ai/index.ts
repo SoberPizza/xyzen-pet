@@ -82,30 +82,8 @@ function getFunasrServerScript(): string {
   return resolveScriptPath('funasr-server.py')
 }
 
-function getKokoroServerScript(): string {
-  return resolveScriptPath('kokoro-server.py')
-}
-
 function getCosyVoiceServerScript(): string {
   return resolveScriptPath('cosyvoice-server.py')
-}
-
-const KOKORO_SERVICE: LocalAIServiceConfig = {
-  id: 'kokoro',
-  command: 'python3',
-  get args() {
-    return [
-      getKokoroServerScript(),
-      '--port',
-      '10096',
-      '--device',
-      'cpu',
-    ]
-  },
-  port: 10096,
-  readinessProbe: () => fetch('http://localhost:10096/health')
-    .then(r => r.ok)
-    .catch(() => false),
 }
 
 const COSYVOICE_SERVICE: LocalAIServiceConfig = {
@@ -202,7 +180,7 @@ export function createLocalAIServiceManager(): LocalAIServiceManager {
   const services = new Map<string, LocalAIServiceEntry>()
 
   // Register known services
-  for (const config of [FUNASR_SERVICE, KOKORO_SERVICE, COSYVOICE_SERVICE]) {
+  for (const config of [FUNASR_SERVICE, COSYVOICE_SERVICE]) {
     services.set(config.id, {
       config,
       process: null,
@@ -423,9 +401,6 @@ export function setupLocalAIServiceManager(): LocalAIServiceManager {
   // Auto-start services in the background. Failure is non-fatal (e.g. Python not installed).
   manager.start('funasr').catch((err) => {
     log.withError(err).warn('Auto-start of FunASR service failed (non-fatal)')
-  })
-  manager.start('kokoro').catch((err) => {
-    log.withError(err).warn('Auto-start of Kokoro TTS service failed (non-fatal)')
   })
   manager.start('cosyvoice').catch((err) => {
     log.withError(err).warn('Auto-start of CosyVoice TTS service failed (non-fatal)')

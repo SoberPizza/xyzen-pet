@@ -64,7 +64,7 @@ function handleProviderAdded(providerId: string) {
 
 function handleSpeechProviderDeleted() {
   if (editingProviderId.value === activeSpeechProvider.value) {
-    activeSpeechProvider.value = 'speech-noop'
+    activeSpeechProvider.value = 'cosyvoice-local-server'
     activeSpeechModel.value = ''
     activeSpeechVoiceId.value = ''
     activeSpeechVoice.value = undefined
@@ -263,12 +263,8 @@ function updateCustomModelName(value: string | undefined) {
 }
 
 function handleDeleteProvider(providerId: string) {
-  if (providerId === 'speech-noop') {
-    return
-  }
-
   if (activeSpeechProvider.value === providerId) {
-    activeSpeechProvider.value = 'speech-noop'
+    activeSpeechProvider.value = 'cosyvoice-local-server'
     activeSpeechModel.value = ''
     activeSpeechVoiceId.value = ''
     activeSpeechVoice.value = undefined
@@ -353,7 +349,7 @@ function handleDeleteProvider(providerId: string) {
                 <template #topRight>
                   <div :class="['flex items-center gap-1']">
                     <button
-                      v-if="metadata.id !== 'speech-noop'"
+
                       type="button"
                       :class="['rounded bg-neutral-100 p-1 text-neutral-600 transition-colors dark:bg-neutral-800/60 hover:bg-neutral-200 dark:text-neutral-300 dark:hover:bg-neutral-700/60']"
                       @click.stop.prevent="handleEditProvider(metadata.id)"
@@ -361,7 +357,7 @@ function handleDeleteProvider(providerId: string) {
                       <div :class="['text-base i-solar:pen-bold-duotone']" />
                     </button>
                     <button
-                      v-if="metadata.id !== 'speech-noop'"
+
                       type="button"
                       :class="['rounded bg-neutral-100 p-1 text-neutral-600 transition-colors dark:bg-neutral-800/60 hover:bg-neutral-200 dark:text-neutral-300 dark:hover:bg-neutral-700/60']"
                       @click.stop.prevent="handleDeleteProvider(metadata.id)"
@@ -400,7 +396,7 @@ function handleDeleteProvider(providerId: string) {
         </div>
         <div>
           <!-- Model selection section -->
-          <div v-if="activeSpeechProvider && activeSpeechProvider !== 'speech-noop'">
+          <div v-if="activeSpeechProvider">
             <div flex="~ col gap-4">
               <div>
                 <h2 class="text-lg md:text-2xl">
@@ -494,7 +490,7 @@ function handleDeleteProvider(providerId: string) {
       </div>
 
       <!-- Voice Configuration Section -->
-      <div v-if="activeSpeechProvider && activeSpeechProvider !== 'speech-noop'">
+      <div v-if="activeSpeechProvider">
         <div flex="~ col gap-4">
           <div>
             <h2 class="text-lg text-neutral-500 md:text-2xl dark:text-neutral-400">

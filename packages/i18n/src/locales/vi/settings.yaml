@@ -670,18 +670,6 @@ pages:
           title: Cài đặt giọng nói
     description: LLMs, nhà cung cấp giọng nói, v.v.
     provider:
-      app-local-audio-transcription:
-        title: Ứng dụng (Local)
-        description: https://github.com/moeru-ai/xsai-transformers
-      app-local-audio-speech:
-        title: Ứng dụng (Local)
-        description: https://github.com/moeru-ai/xsai-transformers
-      browser-local-audio-transcription:
-        title: Trình duyệt (Local)
-        description: https://github.com/moeru-ai/xsai-transformers
-      browser-local-audio-speech:
-        title: Trình duyệt (Local)
-        description: https://github.com/moeru-ai/xsai-transformers
       alibaba-cloud-model-studio:
         description: bailian.console.aliyun.com
         title: Mô hình Studio Alibaba Cloud
@@ -729,9 +717,6 @@ pages:
       deepgram-tts:
         description: deepgram.com
         title: Deepgram
-      speech-noop:
-        title: Không có
-        description: Không phát âm thanh.
       deepseek:
         description: deepseek.com
         title: DeepSeek
@@ -774,31 +759,6 @@ pages:
           validation:
             error-missing-api-key: Vui lòng nhập khóa API để thử giọng.
         title: ElevenLabs
-      kokoro-local:
-        description: Chuyển văn bản thành giọng nói cục bộ dùng Kokoro-82M.
-        fields:
-          field:
-            model:
-              label: Chọn mô hình
-              description: Mô hình nhỏ tải nhanh hơn nhưng chất lượng thấp hơn chút.
-        models:
-          fp32-webgpu:
-            description: >-
-              Mô hình độ chính xác cao dùng WebGPU - Khuyên dùng cho thiết bị hỗ trợ
-          fp32:
-            description: Độ chính xác đầy đủ (Full precision)
-          fp16:
-            description: Độ chính xác một nửa (Half precision)
-          q8:
-            description: Lượng tử hóa 8-bit
-          q4:
-            description: Lượng tử hóa 4-bit
-          q4f16:
-            description: 4-bit với FP16
-        playground:
-          default-text: Xin chào! Đây là bản thử nghiệm hệ thống giọng nói Kokoro.
-          title: Thử nghiệm giọng nói
-        title: Kokoro TTS (Cục bộ)
       fireworks:
         description: fireworks.ai
         title: Fireworks.ai
@@ -910,9 +870,6 @@ pages:
       aliyun-nls:
         description: Aliyun NLS
         title: Aliyun NLS
-      browser-web-speech-api:
-        description: STT gốc trình duyệt (yêu cầu Chrome/Edge/Safari)
-        title: Web Speech API
       official:
         title: Official Provider
         description: Official AI provider by AIRI.

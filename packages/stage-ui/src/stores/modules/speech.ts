@@ -131,7 +131,7 @@ export const useSpeechStore = defineStore('speech', () => {
   watch(
     () => providersStore.configuredSpeechProvidersMetadata.map(provider => provider.id),
     (configuredProviderIds) => {
-      if (!activeSpeechProvider.value || activeSpeechProvider.value === 'speech-noop')
+      if (!activeSpeechProvider.value)
         return
 
       // NOTICE: only reset when the provider has actually been validated and found unconfigured.
@@ -145,8 +145,8 @@ export const useSpeechStore = defineStore('speech', () => {
       // is no longer configured to avoid implicit fallback behavior from persisted state.
       // NOTE: Do NOT use { immediate: true } here — providers.ts validates credentials
       // asynchronously on startup, so firing immediately would see an empty
-      // configuredSpeechProvidersMetadata and incorrectly reset activeSpeechProvider
-      // to 'speech-noop', permanently wiping the persisted selection from localStorage.
+      // configuredSpeechProvidersMetadata and incorrectly reset activeSpeechProvider,
+      // permanently wiping the persisted selection from localStorage.
       if (!configuredProviderIds.includes(activeSpeechProvider.value)) {
         activeSpeechProvider.value = 'cosyvoice-local-server'
         activeSpeechModel.value = 'CosyVoice-300M-SFT'
@@ -264,7 +264,7 @@ export const useSpeechStore = defineStore('speech', () => {
   }
 
   const configured = computed(() => {
-    if (!activeSpeechProvider.value || activeSpeechProvider.value === 'speech-noop')
+    if (!activeSpeechProvider.value)
       return false
 
     let hasModel = !!activeSpeechModel.value

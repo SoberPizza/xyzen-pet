@@ -159,37 +159,6 @@ async function prepareFunasr(): Promise<void> {
   console.log('[postinstall] FunASR preparation complete.')
 }
 
-// --- Kokoro TTS ---
-
-async function ensureKokoroInstalled(python: string): Promise<void> {
-  try {
-    await exec(python, ['-c', `${SUPPRESS_URLLIB3_WARN}import kokoro; print('kokoro installed')`])
-    console.log('[postinstall] kokoro is already installed, skipping pip install.')
-    return
-  }
-  catch {
-    // not installed
-  }
-
-  console.log('[postinstall] Installing kokoro and soundfile via pip...')
-  try {
-    await spawn(python, ['-m', 'pip', 'install', '--progress-bar', 'on', 'kokoro', 'soundfile'])
-    console.log('[postinstall] kokoro pip install completed.')
-  }
-  catch (error) {
-    console.error('[postinstall] Failed to install kokoro dependencies:', error)
-    // Non-fatal: Kokoro TTS is optional
-    console.warn('[postinstall] Kokoro TTS will not be available.')
-  }
-}
-
-async function prepareKokoro(): Promise<void> {
-  console.log('[postinstall] Preparing Kokoro TTS environment...')
-  const python = await findPython()
-  await ensureKokoroInstalled(python)
-  console.log('[postinstall] Kokoro TTS preparation complete.')
-}
-
 // --- CosyVoice TTS ---
 
 async function ensureCosyVoiceInstalled(python: string): Promise<void> {
@@ -326,7 +295,6 @@ async function ensureHuggingfaceHub(python: string): Promise<void> {
 async function main() {
   await installElectronAppDeps()
   await prepareFunasr()
-  await prepareKokoro()
   await prepareCosyVoice()
   await prepareLlamaCpp()
 

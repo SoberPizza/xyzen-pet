@@ -34,7 +34,6 @@ import {
 } from '@xsai-ext/providers/utils'
 import { listModels } from '@xsai/model'
 import { uniqBy } from 'es-toolkit'
-import { isWebGPUSupported } from 'gpuu/webgpu'
 import { defineStore } from 'pinia'
 import {
   createUnAlibabaCloud,
@@ -48,15 +47,12 @@ import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import { getProviderValidationIntervalMs, listProviders as listDefinedProviders, ProviderValidationCheck } from '../libs/providers'
-import { getKokoroWorker } from '../workers/kokoro'
-import { getDefaultKokoroModel, KOKORO_MODELS, kokoroModelsToModelInfo } from '../workers/kokoro/constants'
 import { useAuthStore } from './auth'
 import { createAliyunNLSProvider as createAliyunNlsStreamProvider } from './providers/aliyun/stream-transcription'
 import { convertProviderDefinitionsToMetadata } from './providers/converters'
 import { models as elevenLabsModels } from './providers/elevenlabs/list-models'
 import { buildOpenAICompatibleProvider } from './providers/openai-compatible-builder'
 import { buildOpenRouterAudioSpeechProvider } from './providers/openrouter/audio-speech'
-import { createWebSpeechAPIProvider } from './providers/web-speech-api'
 
 const ALIYUN_NLS_REGIONS = [
   'cn-shanghai',
@@ -243,186 +239,9 @@ export const useProvidersStore = defineStore('providers', () => {
     return null
   })
 
-  async function isBrowserAndMemoryEnough() {
-    if (isStageTamagotchi())
-      return false
-
-    const webGPUAvailable = await isWebGPUSupported()
-    if (webGPUAvailable) {
-      return true
-    }
-
-    if ('navigator' in globalThis && globalThis.navigator != null && 'deviceMemory' in globalThis.navigator && typeof globalThis.navigator.deviceMemory === 'number') {
-      const memory = globalThis.navigator.deviceMemory
-      // Check if the device has at least 8GB of RAM
-      if (memory >= 8) {
-        return true
-      }
-    }
-
-    return false
-  }
-
   // Centralized provider metadata with provider factory functions
   const authState = useAuthStore()
   const providerMetadata: Record<string, ProviderMetadata> = {
-    'speech-noop': {
-      id: 'speech-noop',
-      category: 'speech',
-      tasks: ['text-to-speech', 'tts'],
-      nameKey: 'settings.pages.providers.provider.speech-noop.title',
-      name: 'None',
-      descriptionKey: 'settings.pages.providers.provider.speech-noop.description',
-      description: 'No speech output.',
-      icon: 'i-solar:volume-cross-bold-duotone',
-      defaultOptions: () => ({}),
-      createProvider: async () => ({
-        speech: () => ({
-          baseURL: 'http://speech-noop.invalid/v1/',
-          model: 'noop',
-        }),
-      }),
-      capabilities: {
-        listModels: async () => [],
-        listVoices: async () => [],
-      },
-      validators: {
-        chatPingCheckAvailable: false,
-        validateProviderConfig: () => ({
-          errors: [],
-          reason: '',
-          valid: true,
-        }),
-      },
-    },
-    'app-local-audio-speech': buildOpenAICompatibleProvider({
-      id: 'app-local-audio-speech',
-      locality: 'local',
-      name: 'App (Local)',
-      nameKey: 'settings.pages.providers.provider.app-local-audio-speech.title',
-      descriptionKey: 'settings.pages.providers.provider.app-local-audio-speech.description',
-      icon: 'i-lobe-icons:huggingface',
-      description: 'https://github.com/huggingface/candle',
-      category: 'speech',
-      tasks: ['text-to-speech', 'tts'],
-      isAvailableBy: isStageTamagotchi,
-      creator: createOpenAI,
-      validation: [],
-      validators: {
-        chatPingCheckAvailable: false,
-        validateProviderConfig: (config) => {
-          if (!config.baseUrl) {
-            return {
-              errors: [new Error('Base URL is required.')],
-              reason: 'Base URL is required. This is likely a bug, report to developers on https://github.com/moeru-ai/airi/issues.',
-              valid: false,
-            }
-          }
-
-          return {
-            errors: [],
-            reason: '',
-            valid: true,
-          }
-        },
-      },
-    }),
-    'app-local-audio-transcription': buildOpenAICompatibleProvider({
-      id: 'app-local-audio-transcription',
-      locality: 'local',
-      name: 'App (Local)',
-      nameKey: 'settings.pages.providers.provider.app-local-audio-transcription.title',
-      descriptionKey: 'settings.pages.providers.provider.app-local-audio-transcription.description',
-      icon: 'i-lobe-icons:huggingface',
-      description: 'https://github.com/huggingface/candle',
-      category: 'transcription',
-      tasks: ['speech-to-text', 'automatic-speech-recognition', 'asr', 'stt'],
-      isAvailableBy: isStageTamagotchi,
-      creator: createOpenAI,
-      validation: [],
-      validators: {
-        chatPingCheckAvailable: false,
-        validateProviderConfig: (config) => {
-          if (!config.baseUrl) {
-            return {
-              errors: [new Error('Base URL is required.')],
-              reason: 'Base URL is required. This is likely a bug, report to developers on https://github.com/moeru-ai/airi/issues.',
-              valid: false,
-            }
-          }
-
-          return {
-            errors: [],
-            reason: '',
-            valid: true,
-          }
-        },
-      },
-    }),
-    'browser-local-audio-speech': buildOpenAICompatibleProvider({
-      id: 'browser-local-audio-speech',
-      locality: 'local',
-      name: 'Browser (Local)',
-      nameKey: 'settings.pages.providers.provider.browser-local-audio-speech.title',
-      descriptionKey: 'settings.pages.providers.provider.browser-local-audio-speech.description',
-      icon: 'i-lobe-icons:huggingface',
-      description: 'https://github.com/moeru-ai/xsai-transformers',
-      category: 'speech',
-      tasks: ['text-to-speech', 'tts'],
-      isAvailableBy: isBrowserAndMemoryEnough,
-      creator: createOpenAI,
-      validation: [],
-      validators: {
-        chatPingCheckAvailable: false,
-        validateProviderConfig: (config) => {
-          if (!config.baseUrl) {
-            return {
-              errors: [new Error('Base URL is required.')],
-              reason: 'Base URL is required. This is likely a bug, report to developers on https://github.com/moeru-ai/airi/issues.',
-              valid: false,
-            }
-          }
-
-          return {
-            errors: [],
-            reason: '',
-            valid: true,
-          }
-        },
-      },
-    }),
-    'browser-local-audio-transcription': buildOpenAICompatibleProvider({
-      id: 'browser-local-audio-transcription',
-      locality: 'local',
-      name: 'Browser (Local)',
-      nameKey: 'settings.pages.providers.provider.browser-local-audio-transcription.title',
-      descriptionKey: 'settings.pages.providers.provider.browser-local-audio-transcription.description',
-      icon: 'i-lobe-icons:huggingface',
-      description: 'https://github.com/moeru-ai/xsai-transformers',
-      category: 'transcription',
-      tasks: ['speech-to-text', 'automatic-speech-recognition', 'asr', 'stt'],
-      isAvailableBy: isBrowserAndMemoryEnough,
-      creator: createOpenAI,
-      validation: [],
-      validators: {
-        chatPingCheckAvailable: false,
-        validateProviderConfig: (config) => {
-          if (!config.baseUrl) {
-            return {
-              errors: [new Error('Base URL is required.')],
-              reason: 'Base URL is required. This is likely a bug, report to developers on https://github.com/moeru-ai/airi/issues.',
-              valid: false,
-            }
-          }
-
-          return {
-            errors: [],
-            reason: '',
-            valid: true,
-          }
-        },
-      },
-    }),
     'openai-audio-speech': buildOpenAICompatibleProvider({
       id: 'openai-audio-speech',
       name: 'OpenAI',
@@ -840,84 +659,6 @@ export const useProvidersStore = defineStore('providers', () => {
             errors,
             reason: errors.length > 0 ? errors.map(error => error.message).join(', ') : '',
             valid: errors.length === 0,
-          }
-        },
-      },
-    },
-    'browser-web-speech-api': {
-      id: 'browser-web-speech-api',
-      locality: 'local',
-      category: 'transcription',
-      tasks: ['speech-to-text', 'automatic-speech-recognition', 'asr', 'stt', 'streaming-transcription'],
-      nameKey: 'settings.pages.providers.provider.browser-web-speech-api.title',
-      name: 'Web Speech API (Browser)',
-      descriptionKey: 'settings.pages.providers.provider.browser-web-speech-api.description',
-      description: 'Browser-native speech recognition. No API keys.',
-      icon: 'i-solar:microphone-bold-duotone',
-      defaultOptions: () => ({
-        language: 'en-US',
-        continuous: true,
-        interimResults: true,
-        maxAlternatives: 1,
-      }),
-      transcriptionFeatures: {
-        supportsGenerate: false,
-        supportsStreamOutput: true,
-        supportsStreamInput: true,
-      },
-      isAvailableBy: async () => {
-        // Web Speech API is only available in browser contexts, NOT in Electron
-        // Even though Electron uses Chromium, Web Speech API requires Google's embedded API keys
-        // which are not available in Electron, causing it to fail at runtime
-        if (typeof window === 'undefined')
-          return false
-
-        // Explicitly exclude Electron - Web Speech API doesn't work there
-        if (isStageTamagotchi())
-          return false
-
-        // Check if API is available in browser
-        return 'webkitSpeechRecognition' in window || 'SpeechRecognition' in window
-      },
-      createProvider: async (_config) => {
-        // Web Speech API doesn't need config, but we accept it for consistency
-        return createWebSpeechAPIProvider()
-      },
-      capabilities: {
-        listModels: async () => {
-          return [
-            {
-              id: 'web-speech-api',
-              name: 'Web Speech API',
-              provider: 'browser-web-speech-api',
-              description: 'Browser-native speech recognition (no API keys required)',
-              contextLength: 0,
-              deprecated: false,
-            },
-          ]
-        },
-      },
-      validators: {
-        chatPingCheckAvailable: false,
-        validateProviderConfig: () => {
-          // Web Speech API requires no configuration, just browser support
-          // Always return valid if browser supports it, so it auto-configures
-          const isAvailable = typeof window !== 'undefined'
-            && ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)
-
-          if (!isAvailable) {
-            return {
-              errors: [new Error('Web Speech API is not available. It requires a browser context with SpeechRecognition support (Chrome, Edge, Safari).')],
-              reason: 'Web Speech API is not available in this environment.',
-              valid: false,
-            }
-          }
-
-          // Auto-configure if available (no credentials needed)
-          return {
-            errors: [],
-            reason: '',
-            valid: true,
           }
         },
       },
@@ -1616,289 +1357,6 @@ export const useProvidersStore = defineStore('providers', () => {
         },
       },
     },
-    'kokoro-local': {
-      id: 'kokoro-local',
-      locality: 'local',
-      category: 'speech',
-      tasks: ['text-to-speech'],
-      nameKey: 'settings.pages.providers.provider.kokoro-local.title',
-      name: 'Kokoro TTS',
-      descriptionKey: 'settings.pages.providers.provider.kokoro-local.description',
-      description: 'Local text-to-speech using Kokoro-82M.',
-      icon: 'i-lobe-icons:speaker',
-
-      defaultOptions: () => {
-        const hasWebGPU = typeof navigator !== 'undefined' && !!navigator.gpu
-        const model = getDefaultKokoroModel(hasWebGPU)
-        return {
-          model,
-          voiceId: '',
-        }
-      },
-
-      createProvider: async (_config) => {
-        // Import the worker manager
-        const workerManagerPromise = getKokoroWorker()
-
-        const provider: SpeechProvider = {
-          speech: () => {
-            return {
-              baseURL: 'http://kokoro-local/v1/',
-              model: 'kokoro-82m',
-              fetch: async (_input: RequestInfo | URL, init?: RequestInit) => {
-                try {
-                  // Parse OpenAI-compatible request body
-                  if (!init?.body || typeof init.body !== 'string') {
-                    throw new Error('Invalid request body')
-                  }
-                  const body = JSON.parse(init.body)
-                  const text = body.input
-                  const voice = body.voice
-
-                  if (!voice) {
-                    throw new Error('Voice parameter is required')
-                  }
-
-                  // Generate audio in the worker thread
-                  const buffer = await (await workerManagerPromise).generate(text, voice)
-
-                  return new Response(buffer, {
-                    status: 200,
-                    headers: {
-                      'Content-Type': 'audio/wav',
-                    },
-                  })
-                }
-                catch (error) {
-                  console.error('Kokoro TTS generation failed:', error)
-                  throw error
-                }
-              },
-            }
-          },
-        }
-
-        return provider
-      },
-
-      capabilities: {
-        listModels: async (_config: Record<string, unknown>) => {
-          const hasWebGPU = typeof navigator !== 'undefined' && !!navigator.gpu
-          return kokoroModelsToModelInfo(hasWebGPU, t)
-        },
-
-        loadModel: async (config: Record<string, unknown>, _hooks?: { onProgress?: (progress: ProgressInfo) => Promise<void> | void }) => {
-          const modelId = config.model as string
-
-          if (!modelId) {
-            throw new Error('No model specified')
-          }
-
-          const modelDef = KOKORO_MODELS.find(m => m.id === modelId)
-          if (!modelDef) {
-            throw new Error(`Invalid model: ${modelId}. Must be one of: ${KOKORO_MODELS.map(m => m.id).join(', ')}`)
-          }
-
-          // Validate platform requirements
-          if (modelDef.platform === 'webgpu') {
-            const hasWebGPU = typeof navigator !== 'undefined' && !!navigator.gpu
-            if (!hasWebGPU) {
-              throw new Error('WebGPU is required for this model but is not available in your browser')
-            }
-          }
-
-          try {
-            const workerManager = await getKokoroWorker()
-            await workerManager.loadModel(modelDef.quantization, modelDef.platform, { onProgress: _hooks?.onProgress })
-          }
-          catch (error) {
-            console.error('Failed to load Kokoro model:', error)
-            throw error
-          }
-        },
-
-        listVoices: async (config: Record<string, unknown>) => {
-          try {
-            // Reload the model before fetching voices
-            const modelId = config.model as string
-            if (modelId) {
-              const modelDef = KOKORO_MODELS.find(m => m.id === modelId)
-              if (modelDef) {
-                // Validate platform requirements
-                if (modelDef.platform === 'webgpu') {
-                  const hasWebGPU = typeof navigator !== 'undefined' && !!navigator.gpu
-                  if (!hasWebGPU) {
-                    throw new Error('WebGPU is required for this model but is not available in your browser')
-                  }
-                }
-
-                // Load the model
-                const workerManager = await getKokoroWorker()
-                await workerManager.loadModel(modelDef.quantization, modelDef.platform)
-              }
-            }
-
-            // Get worker manager and fetch voices from the model
-            const workerManager = await getKokoroWorker()
-            const modelVoices = workerManager.getVoices()
-
-            // Language code mapping
-            const languageMap: Record<string, { code: string, title: string }> = {
-              'en-us': { code: 'en-US', title: 'English (US)' },
-              'en-gb': { code: 'en-GB', title: 'English (UK)' },
-              'ja': { code: 'ja', title: 'Japanese' },
-              'zh-cn': { code: 'zh-CN', title: 'Chinese (Mandarin)' },
-              'es': { code: 'es', title: 'Spanish' },
-              'fr': { code: 'fr', title: 'French' },
-              'hi': { code: 'hi', title: 'Hindi' },
-              'it': { code: 'it', title: 'Italian' },
-              'pt-br': { code: 'pt-BR', title: 'Portuguese (Brazil)' },
-            }
-
-            // Transform the voices object to the expected array format
-            return Object.entries(modelVoices).map(([id, voice]: [string, { language: string, name: string, gender: string }]) => {
-              const languageCode = voice.language.toLowerCase()
-              const languageInfo = languageMap[languageCode] || { code: languageCode, title: voice.language }
-
-              return {
-                id,
-                name: `${voice.name} (${voice.gender}, ${languageInfo.title.split('(')[0].trim()})`,
-                provider: 'kokoro-local',
-                languages: [languageInfo],
-                gender: voice.gender.toLowerCase(),
-              }
-            })
-          }
-          catch (error) {
-            console.error('Failed to fetch Kokoro voices:', error)
-            // Return empty array if model not loaded yet
-            return []
-          }
-        },
-      },
-
-      validators: {
-        chatPingCheckAvailable: false,
-        validateProviderConfig: async (config: any) => {
-          const model = config.model as string
-
-          if (!model) {
-            return {
-              errors: [new Error('No model selected')],
-              reason: 'Please select a model from the dropdown menu',
-              valid: false,
-            }
-          }
-
-          if (!KOKORO_MODELS.some(m => m.id === model)) {
-            return {
-              errors: [new Error(`Invalid model: ${model}`)],
-              reason: `Invalid model. Must be one of: ${KOKORO_MODELS.map(m => m.id).join(', ')}`,
-              valid: false,
-            }
-          }
-
-          return {
-            errors: [],
-            reason: '',
-            valid: true,
-          }
-        },
-      },
-    },
-    'kokoro-local-server': {
-      id: 'kokoro-local-server',
-      locality: 'local',
-      category: 'speech',
-      tasks: ['text-to-speech'],
-      nameKey: 'settings.pages.providers.provider.kokoro-local-server.title',
-      name: 'Kokoro TTS (Local Server)',
-      descriptionKey: 'settings.pages.providers.provider.kokoro-local-server.description',
-      description: 'Kokoro TTS running as a local Python server (Electron only).',
-      icon: 'i-lobe-icons:speaker',
-      requiresCredentials: false,
-      isAvailableBy: isStageTamagotchi,
-
-      defaultOptions: () => ({
-        baseUrl: 'http://localhost:10096',
-      }),
-
-      createProvider: async (config) => {
-        const baseUrl = typeof config.baseUrl === 'string' ? config.baseUrl.trim() : 'http://localhost:10096'
-
-        const provider: SpeechProvider = {
-          speech: () => ({
-            baseURL: `${baseUrl}/v1/`,
-            model: 'kokoro',
-          }),
-        }
-
-        return provider
-      },
-
-      capabilities: {
-        listModels: async () => {
-          return [
-            {
-              id: 'kokoro',
-              name: 'Kokoro',
-              provider: 'kokoro-local-server',
-              description: 'Kokoro TTS model running on local Python server.',
-              contextLength: 0,
-              deprecated: false,
-            },
-          ]
-        },
-
-        listVoices: async (config: Record<string, unknown>) => {
-          const baseUrl = typeof config.baseUrl === 'string' ? config.baseUrl.trim() : 'http://localhost:10096'
-          try {
-            const res = await fetch(`${baseUrl}/v1/voices`)
-            if (!res.ok)
-              return []
-            const data = await res.json()
-            return (data.voices || []).map((v: { id: string, name: string }) => ({
-              id: v.id,
-              name: v.name,
-              provider: 'kokoro-local-server',
-              languages: [{ code: 'en-US', title: 'English (US)' }],
-              gender: 'neutral',
-            }))
-          }
-          catch {
-            return []
-          }
-        },
-      },
-
-      validators: {
-        chatPingCheckAvailable: false,
-        validateProviderConfig: async (config: any) => {
-          const baseUrl = typeof config.baseUrl === 'string' ? config.baseUrl.trim() : ''
-          const errors: Error[] = []
-
-          if (!baseUrl) {
-            errors.push(new Error('Server URL is required (e.g. http://localhost:10096).'))
-          }
-          else {
-            try {
-              const res = await fetch(`${baseUrl}/health`)
-              if (!res.ok)
-                errors.push(new Error('Kokoro server health check failed.'))
-            }
-            catch {
-              errors.push(new Error('Cannot reach Kokoro server. Ensure it is running.'))
-            }
-          }
-
-          return {
-            errors,
-            reason: errors.map(e => e.message).join(', '),
-            valid: errors.length === 0,
-          }
-        },
-      },
-    },
     'cosyvoice-local-server': {
       id: 'cosyvoice-local-server',
       locality: 'local',
@@ -2060,15 +1518,8 @@ export const useProvidersStore = defineStore('providers', () => {
     if (!metadata)
       return false
 
-    // Web Speech API doesn't require credentials - use empty config if not present
-    if (providerId === 'browser-web-speech-api') {
-      if (!providerCredentials.value[providerId]) {
-        providerCredentials.value[providerId] = getDefaultProviderConfig(providerId)
-      }
-    }
-
     const config = providerCredentials.value[providerId]
-    if (!config && providerId !== 'browser-web-speech-api')
+    if (!config)
       return false
 
     const configString = JSON.stringify(config || {})
@@ -2098,7 +1549,7 @@ export const useProvidersStore = defineStore('providers', () => {
         providerRuntimeState.value[providerId].isConfigured = validationResult.valid
         providerRuntimeState.value[providerId].validatedCredentialHash = configString
         // Auto-mark Web Speech API as added if valid and available
-        if (validationResult.valid && ['browser-web-speech-api', 'player2'].includes(providerId)) {
+        if (validationResult.valid && providerId === 'player2') {
           markProviderAdded(providerId)
         }
       }
@@ -2407,7 +1858,7 @@ export const useProvidersStore = defineStore('providers', () => {
 
     // Providers that don't require credentials use empty config
     let config = providerCredentials.value[providerId]
-    const noCredentials = metadata.requiresCredentials === false || providerId === 'browser-web-speech-api'
+    const noCredentials = metadata.requiresCredentials === false
     if (!config && noCredentials) {
       config = getDefaultProviderConfig(providerId) || {}
       providerCredentials.value[providerId] = config

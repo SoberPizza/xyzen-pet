@@ -62,10 +62,6 @@ vi.mock('../providers/aliyun/stream-transcription', () => ({
   streamAliyunTranscription: vi.fn(),
 }))
 
-vi.mock('../providers/web-speech-api', () => ({
-  streamWebSpeechAPITranscription: vi.fn(),
-}))
-
 vi.mock('./hearing-emotion', () => ({
   useHearingEmotionStore: () => ({
     pushEmotion: vi.fn(),

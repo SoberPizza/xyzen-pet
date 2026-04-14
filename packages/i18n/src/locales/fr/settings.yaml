@@ -670,18 +670,6 @@ pages:
           title: Paramètres de la voix
     description: LLMs, fournisseurs vocaux, etc.
     provider:
-      app-local-audio-transcription:
-        title: Application (Locale)
-        description: https://github.com/moeru-ai/xsai-transformers
-      app-local-audio-speech:
-        title: Application (Locale)
-        description: https://github.com/moeru-ai/xsai-transformers
-      browser-local-audio-transcription:
-        title: Navigateur (Local)
-        description: https://github.com/moeru-ai/xsai-transformers
-      browser-local-audio-speech:
-        title: Navigateur (Local)
-        description: https://github.com/moeru-ai/xsai-transformers
       alibaba-cloud-model-studio:
         description: bailian.console.aliyun.com
         title: Studio de modèles Alibaba Cloud
@@ -729,9 +717,6 @@ pages:
       deepgram-tts:
         description: deepgram.com
         title: Deepgram
-      speech-noop:
-        title: Aucun
-        description: Aucune sortie vocale.
       deepseek:
         description: deepseek.com
         title: DeepSeek
@@ -774,31 +759,6 @@ pages:
           validation:
             error-missing-api-key: Veuillez entrer une clé API pour tester la voix.
         title: ElevenLabs
-      kokoro-local:
-        description: Synthèse vocale locale utilisant Kokoro-82M.
-        fields:
-          field:
-            model:
-              label: Choix du modèle
-              description: Les modèles plus petits se chargent plus rapidement mais peuvent avoir une qualité légèrement inférieure.
-        models:
-          fp32-webgpu:
-            description: >-
-              Modèle en pleine précision utilisant WebGPU - Recommandé pour les appareils compatibles
-          fp32:
-            description: Modèle en pleine précision
-          fp16:
-            description: Demi-précision
-          q8:
-            description: Quantifié en 8-bit
-          q4:
-            description: Quantifié en 4-bit
-          q4f16:
-            description: 4-bit avec FP16
-        playground:
-          default-text: Bonjour ! Ceci est un test du système de synthèse vocale Kokoro.
-          title: Zone d'essai vocale
-        title: Kokoro TTS (Local)
       fireworks:
         description: fireworks.ai
         title: Fireworks.ai
@@ -910,9 +870,6 @@ pages:
       aliyun-nls:
         description: Aliyun NLS
         title: Aliyun NLS
-      browser-web-speech-api:
-        description: STT natif du navigateur (requiert Chrome/Edge/Safari)
-        title: Web Speech API
       official:
         title: Fournisseur officiel
         description: Fournisseur d'IA officiel par AIRI.

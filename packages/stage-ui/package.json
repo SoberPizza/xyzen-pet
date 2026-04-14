@@ -113,7 +113,7 @@
     "hono": "catalog:",
     "html2canvas": "^1.4.1",
     "idb-keyval": "catalog:",
-    "kokoro-js": "^1.2.1",
+
     "localforage": "^1.10.0",
     "mediabunny": "^1.40.1",
     "nanoid": "^5.1.7",

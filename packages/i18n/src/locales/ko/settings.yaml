@@ -670,18 +670,6 @@ pages:
           title: 음성 설정
     description: LLM, 음성 합성 제공자 등.
     provider:
-      app-local-audio-transcription:
-        title: 앱 (로컬)
-        description: https://github.com/moeru-ai/xsai-transformers
-      app-local-audio-speech:
-        title: 앱 (로컬)
-        description: https://github.com/moeru-ai/xsai-transformers
-      browser-local-audio-transcription:
-        title: 브라우저 (로컬)
-        description: https://github.com/moeru-ai/xsai-transformers
-      browser-local-audio-speech:
-        title: 브라우저 (로컬)
-        description: https://github.com/moeru-ai/xsai-transformers
       alibaba-cloud-model-studio:
         description: bailian.console.aliyun.com
         title: Alibaba 클라우드 모델 스튜디오
@@ -729,9 +717,6 @@ pages:
       deepgram-tts:
         description: deepgram.com
         title: Deepgram
-      speech-noop:
-        title: 없음
-        description: 음성 출력이 없습니다.
       deepseek:
         description: deepseek.com
         title: DeepSeek
@@ -774,31 +759,6 @@ pages:
           validation:
             error-missing-api-key: 음성을 테스트하려면 API 키를 입력하세요.
         title: ElevenLabs
-      kokoro-local:
-        description: Kokoro-82M을 사용하여 로컬 텍스트 음성 변환을 생성합니다.
-        fields:
-          field:
-            model:
-              label: 모델 선택
-              description: 작은 모델은 더 빠르게 로드되지만 품질이 약간 낮을 수 있습니다.
-        models:
-          fp32-webgpu:
-            description: >-
-              WebGPU를 사용한 완전 정밀 모델 - 지원되는 장치에 권장됨
-          fp32:
-            description: 완전 정밀 모델
-          fp16:
-            description: 반 정밀도
-          q8:
-            description: 8비트 양자화
-          q4:
-            description: 4비트 양자화
-          q4f16:
-            description: FP16이 포함된 4비트 양자화
-        playground:
-          default-text: 안녕하세요! 이것은 Kokoro 문자 음성 변환 시스템의 테스트입니다.
-          title: 음성 플레이그라운드
-        title: Kokoro TTS (로컬)
       fireworks:
         description: fireworks.ai
         title: Fireworks.ai
@@ -910,9 +870,6 @@ pages:
       aliyun-nls:
         description: Aliyun NLS
         title: Aliyun NLS
-      browser-web-speech-api:
-        description: 브라우저 기반 STT(Chrome/Edge/Safari 필요)
-        title: 웹 음성 API
       official:
         title: Official Provider
         description: Official AI provider by AIRI.

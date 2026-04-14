@@ -16,7 +16,6 @@ import vadWorkletUrl from '../../workers/vad/process.worklet?worker&url'
 import { useProvidersStore } from '../providers'
 import { streamAliyunTranscription } from '../providers/aliyun/stream-transcription'
 import { streamSenseVoiceTranscription } from '../providers/sensevoice/stream-transcription'
-import { streamWebSpeechAPITranscription } from '../providers/web-speech-api'
 import { useHearingEmotionStore } from './hearing-emotion'
 
 function errorMessage(err: unknown): string {
@@ -104,7 +103,6 @@ export function filterTranscriptionByConfidence(
 const STREAM_TRANSCRIPTION_EXECUTORS: Record<string, StreamTranscription> = {
   'aliyun-nls-transcription': streamAliyunTranscription,
   'sensevoice-local-server': streamSenseVoiceTranscription,
-  // Web Speech API is handled specially in transcribeForMediaStream since it works directly with MediaStream
 }
 
 export const useHearingStore = defineStore('hearing-store', () => {
@@ -162,12 +160,6 @@ export const useHearingStore = defineStore('hearing-store', () => {
   const configured = computed(() => {
     if (!activeTranscriptionProvider.value)
       return false
-
-    // Web Speech API doesn't strictly need a model selected (it has a default)
-    // but we still check to maintain consistency
-    if (activeTranscriptionProvider.value === 'browser-web-speech-api') {
-      return true // Web Speech API is ready if provider is selected and available
-    }
 
     // SenseVoice local server has a fixed model; ready when provider is selected
     if (activeTranscriptionProvider.value === 'sensevoice-local-server') {
@@ -339,12 +331,6 @@ export const useHearingSpeechInputPipeline = defineStore('modules:hearing:speech
     if (!providerId)
       return false
 
-    // Web Speech API always supports stream input when available
-    if (providerId === 'browser-web-speech-api') {
-      return typeof window !== 'undefined'
-        && ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)
-    }
-
     return providersStore.getTranscriptionFeatures(providerId).supportsStreamInput
   })
 
@@ -475,51 +461,6 @@ export const useHearingSpeechInputPipeline = defineStore('modules:hearing:speech
     if (!session)
       return
 
-    // Special handling for Web Speech API
-    if (session.providerId === 'browser-web-speech-api') {
-      try {
-        const reason = new DOMException(abort ? 'Aborted' : 'Stopped', 'AbortError')
-        if (!session.abortController.signal.aborted) {
-          session.abortController.abort(reason)
-        }
-
-        // Stop Web Speech API recognition if it exists
-        const result = session.result as any
-        if (result?.recognition) {
-          try {
-            result.recognition.stop()
-          }
-          catch (err) {
-            console.warn('Error stopping Web Speech API recognition:', err)
-          }
-        }
-      }
-      catch (err) {
-        console.error('Error stopping Web Speech API session:', err)
-      }
-
-      if (session.idleTimer)
-        clearTimeout(session.idleTimer)
-
-      streamingSession.value = undefined
-
-      if (session.result?.mode === 'stream') {
-        try {
-          const text = await session.result.text
-          return text
-        }
-        catch (err) {
-          if (isExpectedStreamStopError(err))
-            return
-
-          error.value = errorMessage(err)
-          console.error('Error getting transcription result:', error.value)
-        }
-      }
-
-      return
-    }
-
     try {
       const reason = new DOMException(abort ? 'Aborted' : 'Stopped', 'AbortError')
       // Ensure provider transports (e.g., Aliyun NLS) are signaled to stop over websocket.
@@ -609,150 +550,6 @@ export const useHearingSpeechInputPipeline = defineStore('modules:hearing:speech
       }
 
       console.info('[Hearing Pipeline] Using provider:', providerId)
-
-      // Special handling for Web Speech API - it works directly with MediaStream
-      if (providerId === 'browser-web-speech-api') {
-        // Check if Web Speech API is available
-        const isAvailable = typeof window !== 'undefined'
-          && ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)
-
-        if (!isAvailable) {
-          error.value = 'Web Speech API is not available in this browser'
-          console.error('Web Speech API is not available')
-          return
-        }
-
-        // Check if session already exists and reuse it
-        const existingSession = streamingSession.value
-        if (existingSession && existingSession.providerId === 'browser-web-speech-api') {
-          const nextCallbacks = {
-            onSentenceEnd: options?.onSentenceEnd,
-            onSpeechEnd: options?.onSpeechEnd,
-          }
-          // For Web Speech API, if callbacks are provided and different, we need to restart
-          // because recognition instance callbacks are set once and can't be changed
-          const hasNewCallbacks = haveStreamingCallbacksChanged(existingSession.callbacks, nextCallbacks)
-
-          if (hasNewCallbacks) {
-            console.info('Web Speech API: New callbacks provided, restarting session to use them')
-            await stopStreamingTranscription(false, existingSession.providerId)
-            // Continue to create new session below
-            // Note: stopStreamingTranscription already clears streamingSession.value and waits for async cleanup
-          }
-          else {
-            // No new callbacks - just bump idle timer and reuse existing session
-            const idleTimeout = options?.idleTimeoutMs ?? DEFAULT_STREAM_IDLE_TIMEOUT
-            if (existingSession.idleTimer) {
-              clearTimeout(existingSession.idleTimer)
-              existingSession.idleTimer = setTimeout(async () => {
-                await stopStreamingTranscription(false, existingSession.providerId)
-              }, idleTimeout)
-            }
-
-            console.info('Web Speech API session already active, reusing existing session (no callback changes)')
-            return
-          }
-        }
-
-        // Auto-select default model if not selected
-        if (!activeTranscriptionModel.value) {
-          // Try to get models for the provider and select the first one
-          const models = await providersStore.getModelsForProvider(providerId)
-          if (models.length > 0) {
-            activeTranscriptionModel.value = models[0].id
-            console.info('Auto-selected Web Speech API model:', models[0].id)
-          }
-          else {
-            // Fallback to default model ID
-            activeTranscriptionModel.value = 'web-speech-api'
-            console.info('Auto-selected Web Speech API default model')
-          }
-        }
-
-        const abortController = new AbortController()
-
-        // Get provider config for language settings
-        const providerConfig = providersStore.getProviderConfig(providerId) || {}
-        const language = (options?.providerOptions?.language as string)
-          || (providerConfig.language as string)
-          || 'en-US'
-
-        // Web Speech API in continuous mode should run indefinitely - no idle timeout
-        // Only stop when explicitly requested (e.g., microphone disabled)
-        const idleTimeout = options?.idleTimeoutMs ?? 0 // 0 = disabled
-        let idleTimer: ReturnType<typeof setTimeout> | undefined
-        const bumpIdle = () => {
-          if (idleTimeout > 0) {
-            if (idleTimer)
-              clearTimeout(idleTimer)
-            idleTimer = setTimeout(async () => {
-              await stopStreamingTranscription(false, providerId)
-            }, idleTimeout)
-          }
-        }
-
-        const result = streamWebSpeechAPITranscription(stream, {
-          language,
-          continuous: (options?.providerOptions?.continuous as boolean) ?? (providerConfig.continuous as boolean) ?? true,
-          interimResults: (options?.providerOptions?.interimResults as boolean) ?? (providerConfig.interimResults as boolean) ?? true,
-          maxAlternatives: (options?.providerOptions?.maxAlternatives as number) ?? (providerConfig.maxAlternatives as number) ?? 1,
-          abortSignal: abortController.signal,
-          onSentenceEnd: (delta) => {
-            bumpIdle() // Bump idle timer on activity (only if enabled)
-            // Call the options callback
-            options?.onSentenceEnd?.(delta)
-          },
-          onSpeechEnd: (text) => {
-            // Call the options callback
-            options?.onSpeechEnd?.(text)
-          },
-        })
-
-        // Store session info for cleanup
-        const recognitionInstance = (result as any).recognition
-        streamingSession.value = {
-          audioContext: {} as AudioContext, // Not used for Web Speech API
-          workletNode: {} as AudioWorkletNode, // Not used for Web Speech API
-          mediaStreamSource: {} as MediaStreamAudioSourceNode, // Not used for Web Speech API
-          audioStreamController: undefined,
-          abortController,
-          result: { ...result, mode: 'stream' as const, recognition: recognitionInstance },
-          idleTimer,
-          providerId,
-          callbacks: {
-            onSentenceEnd: options?.onSentenceEnd,
-            onSpeechEnd: options?.onSpeechEnd,
-          },
-        } as any // Type assertion needed because recognition is extra
-
-        // Initial idle timer (only if enabled)
-        bumpIdle()
-
-        // Stream out text deltas
-        if (result.textStream) {
-          void (async () => {
-            try {
-              const reader = result.textStream.getReader()
-
-              while (true) {
-                const { done } = await reader.read()
-                if (done)
-                  break
-                // onSentenceEnd is already called from the recognition.onresult handler
-                // Note: onSpeechEnd is called from web-speech-api/index.ts recognition.onend handler
-                // (line 332 for non-continuous mode, line 271 for errors)
-                // We don't call it here to avoid duplicate calls
-              }
-            }
-            catch (err) {
-              if (!isExpectedStreamStopError(err))
-                console.error('Error reading text stream:', err)
-            }
-          })()
-        }
-
-        return
-      }
 
       const provider = await providersStore.getProviderInstance<TranscriptionProviderWithExtraOptions<string, any>>(providerId)
       if (!provider) {

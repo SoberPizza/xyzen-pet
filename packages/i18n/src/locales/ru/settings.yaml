@@ -670,18 +670,6 @@ pages:
           title: Настройки голоса
     description: LLM-модели, провайдеры речи и др.
     provider:
-      app-local-audio-transcription:
-        title: Приложение (локально)
-        description: https://github.com/moeru-ai/xsai-transformers
-      app-local-audio-speech:
-        title: Приложение (локально)
-        description: https://github.com/moeru-ai/xsai-transformers
-      browser-local-audio-transcription:
-        title: Браузер (локально)
-        description: https://github.com/moeru-ai/xsai-transformers
-      browser-local-audio-speech:
-        title: Браузер (локально)
-        description: https://github.com/moeru-ai/xsai-transformers
       alibaba-cloud-model-studio:
         description: Bailian.console.aliyun.com
         title: Alibaba Cloud Model Studio
@@ -729,9 +717,6 @@ pages:
       deepgram-tts:
         description: Deepgram.com
         title: Глупо грамма
-      speech-noop:
-        title: Отсутствует
-        description: Вывод речи отсутствует.
       deepseek:
         description: Deepseek.com
         title: DeepSeek
@@ -774,31 +759,6 @@ pages:
           validation:
             error-missing-api-key: Введите API-ключ, чтобы протестировать голос.
         title: ElevenLabs
-      kokoro-local:
-        description: Локальный синтезатор речи с помощью Kokoro-82M.
-        fields:
-          field:
-            model:
-              label: Выбор модели
-              description: Маленькие модели загружаются быстрее, но могут иметь немного более низкое качество.
-        models:
-          fp32-webgpu:
-            description: >-
-              Полная точная модель с использованием WebGPU - рекомендуется для поддерживаемых устройств
-          fp32:
-            description: Полная точная модель
-          fp16:
-            description: Половина точности
-          q8:
-            description: 8-битный квантованный
-          q4:
-            description: 4-битный квантованный
-          q4f16:
-            description: 4-битный  FP16
-        playground:
-          default-text: Привет! Это тест-системы синтеза речи.
-          title: Голосовая платформа
-        title: Kokoro TTS (Local)
       fireworks:
         description: Fireworks.ai
         title: Fireworks.ai
@@ -910,9 +870,6 @@ pages:
       aliyun-nls:
         description: Aliyun NLS
         title: Aliyun NLS
-      browser-web-speech-api:
-        description: Браузер  STT (требует Chrome/Edge/Safari)
-        title: Web Speech API
       official:
         title: Официальный провайдер
         description: Официальный ИИ провайдер AIRI.

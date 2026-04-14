@@ -717,18 +717,6 @@ pages:
           title: 音声設定
     description: LLM、音声プロバイダーなど。
     provider:
-      app-local-audio-transcription:
-        title: アプリ (ローカル)
-        description: https://github.com/moeru-ai/xsai-transformers
-      app-local-audio-speech:
-        title: アプリ (ローカル)
-        description: https://github.com/moeru-ai/xsai-transformers
-      browser-local-audio-transcription:
-        title: ブラウザ (ローカル)
-        description: https://github.com/moeru-ai/xsai-transformers
-      browser-local-audio-speech:
-        title: ブラウザ (ローカル)
-        description: https://github.com/moeru-ai/xsai-transformers
       alibaba-cloud-model-studio:
         description: bailian.console.aliyun.com
         title: Alibaba Cloud Model Studio
@@ -776,9 +764,6 @@ pages:
       deepgram-tts:
         description: deepgram.com
         title: Deepgram
-      speech-noop:
-        title: 無し
-        description: 音声出力がありません。
       deepseek:
         description: deepseek.com
         title: DeepSeek
@@ -821,31 +806,6 @@ pages:
           validation:
             error-missing-api-key: 音声をテストするにはAPIキーを入力してください。
         title: ElevenLabs
-      kokoro-local:
-        description: Kokoro-82Mを使用したローカルテキスト読み上げ機能です。
-        fields:
-          field:
-            model:
-              label: モデルの選択
-              description: モデルが小さいほど読み込みは速くなりますが、品質が若干低下する可能性があります。
-        models:
-          fp32-webgpu:
-            description: >-
-              WebGPU を使用した単精度モデル - 対応デバイスでの使用を推奨します
-          fp32:
-            description: 単精度モデル
-          fp16:
-            description: 半精度
-          q8:
-            description: 8ビット量子化
-          q4:
-            description: 4ビット量子化
-          q4f16:
-            description: 4ビット量子化（FP16）
-        playground:
-          default-text: こんにちは！これは音声合成システム Kokoro のテストです。
-          title: 音声合成実験場
-        title: Kokoro TTS (ローカル)
       fireworks:
         description: fireworks.ai
         title: Fireworks.ai
@@ -977,9 +937,6 @@ pages:
         env-ready: '環境準備完了（funasr {version}）'
         env-not-ready: 環境が未準備です — pnpm install を実行して FunASR をセットアップしてください
         checking-python: Python 環境を確認中...
-      browser-web-speech-api:
-        description: ブラウザネイティブSTT (Chrome/Edge/Safariが必要)
-        title: Web Speech API
       official:
         title: 公式プロバイダー
         description: AIRIが提供する公式AIプロバイダー。

@@ -2,7 +2,6 @@
 import type { ChatProvider } from '@xsai-ext/providers/utils'
 
 import { errorMessageFrom } from '@moeru/std'
-import { isStageTamagotchi } from '@proj-airi/stage-shared'
 import { useAudioAnalyzer } from '@proj-airi/stage-ui/composables'
 import { useAudioContext } from '@proj-airi/stage-ui/stores/audio'
 import { useChatOrchestratorStore } from '@proj-airi/stage-ui/stores/chat'
@@ -15,7 +14,7 @@ import { BasicTextarea, FieldCombobox } from '@proj-airi/ui'
 import { until, useLocalStorage } from '@vueuse/core'
 import { storeToRefs } from 'pinia'
 import { DropdownMenuContent, DropdownMenuItem, DropdownMenuPortal, DropdownMenuRoot, DropdownMenuTrigger, PopoverContent, PopoverRoot, PopoverTrigger } from 'reka-ui'
-import { computed, nextTick, onUnmounted, ref, watch } from 'vue'
+import { computed, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import IndicatorMicVolume from './IndicatorMicVolume.vue'
@@ -247,52 +246,10 @@ async function startListening() {
       hearingConfigured: hearingConfigured.value,
     })
 
-    // Auto-configure Web Speech API as default if no provider is configured
     if (!hearingConfigured.value) {
-      // Check if Web Speech API is available in the browser
-      // Web Speech API is NOT available in Electron (stage-tamagotchi) - it requires Google's embedded API keys
-      // which are not available in Electron, causing it to fail at runtime
-      const isWebSpeechAvailable = typeof window !== 'undefined'
-        && !isStageTamagotchi() // Explicitly exclude Electron
-        && ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)
-
-      if (isWebSpeechAvailable) {
-        console.info('[ChatArea] No transcription provider configured. Auto-configuring Web Speech API as default...')
-
-        // Initialize the provider in the providers store first
-        try {
-          providersStore.initializeProvider('browser-web-speech-api')
-        }
-        catch (err) {
-          console.warn('[ChatArea] Error initializing Web Speech API provider:', err)
-        }
-
-        // Set as active provider
-        hearingStore.activeTranscriptionProvider = 'browser-web-speech-api'
-
-        // Wait for reactivity to update
-        await nextTick()
-
-        // Verify the provider was set correctly
-        if (hearingStore.activeTranscriptionProvider === 'browser-web-speech-api') {
-          console.info('[ChatArea] Web Speech API configured as default provider')
-          // Continue with transcription - Web Speech API is ready
-        }
-        else {
-          console.error('[ChatArea] Failed to set Web Speech API as default provider')
-          isListening.value = false
-          return
-        }
-      }
-      else {
-        console.error('[ChatArea] Web Speech API not available. No transcription provider configured and Web Speech API is not available in this browser. Please go to Settings > Modules > Hearing to configure a transcription provider. Browser support:', {
-          hasWindow: typeof window !== 'undefined',
-          hasWebkitSpeechRecognition: typeof window !== 'undefined' && 'webkitSpeechRecognition' in window,
-          hasSpeechRecognition: typeof window !== 'undefined' && 'SpeechRecognition' in window,
-        })
-        isListening.value = false
-        return
-      }
+      console.error('[ChatArea] No transcription provider configured. Please go to Settings > Modules > Hearing to configure a transcription provider.')
+      isListening.value = false
+      return
     }
 
     // Request microphone permission if needed (microphone should already be enabled by the user)

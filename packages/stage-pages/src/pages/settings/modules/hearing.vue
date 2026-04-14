@@ -513,15 +513,6 @@ watch(activeTranscriptionProvider, async (provider) => {
 
   await hearingStore.loadModelsForProvider(provider)
   syncOpenAICompatibleSettings()
-
-  // Auto-select first model for Web Speech API if no model is selected
-  if (provider === 'browser-web-speech-api' && !activeTranscriptionModel.value) {
-    const models = providerModels.value
-    if (models.length > 0) {
-      activeTranscriptionModel.value = models[0].id
-      console.info('Auto-selected Web Speech API model:', models[0].id)
-    }
-  }
 }, { immediate: true })
 
 // FunASR service status from the shared store (auto-started at app level)

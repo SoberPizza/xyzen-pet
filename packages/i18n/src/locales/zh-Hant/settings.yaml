@@ -670,18 +670,6 @@ pages:
           title: 聲音設定
     description: LLM、語音合成、語音辨識服務來源等
     provider:
-      app-local-audio-transcription:
-        title: 應用程式內（本機）
-        description: https://github.com/moeru-ai/xsai-transformers
-      app-local-audio-speech:
-        title: 應用程式內（本機）
-        description: https://github.com/moeru-ai/xsai-transformers
-      browser-local-audio-transcription:
-        title: 瀏覽器內（本機）
-        description: https://github.com/moeru-ai/xsai-transformers
-      browser-local-audio-speech:
-        title: 瀏覽器內（本機）
-        description: https://github.com/moeru-ai/xsai-transformers
       alibaba-cloud-model-studio:
         description: bailian.console.aliyun.com
         title: 阿里百煉
@@ -729,9 +717,6 @@ pages:
       deepgram-tts:
         description: deepgram.com
         title: Deepgram
-      speech-noop:
-        title: 無
-        description: 無語音輸出。
       deepseek:
         description: DeepSeek.com
         title: 深度求索 DeepSeek
@@ -774,31 +759,6 @@ pages:
           validation:
             error-missing-api-key: 需要填寫 API Key 才能使用喔！
         title: ElevenLabs (11labs)
-      kokoro-local:
-        description: 基於 Kokoro-82M 的本地文字轉語音。
-        fields:
-          field:
-            model:
-              label: 模型選擇
-              description: 較小的模型載入速度更快，但品質可能略低。
-        models:
-          fp32-webgpu:
-            description: >-
-              使用 WebGPU 的全精度模型 - 建議在支援的裝置上使用
-          fp32:
-            description: 全精度模型
-          fp16:
-            description: 半精度
-          q8:
-            description: 8-bit 量化
-          q4:
-            description: 4-bit 量化
-          q4f16:
-            description: 4-bit 搭配 FP16
-        playground:
-          default-text: 您好！這是 Kokoro 文字轉語音系統的測試。
-          title: 語音測試場
-        title: Kokoro TTS (本地)
       fireworks:
         description: Fireworks.ai
         title: Fireworks.ai
@@ -910,9 +870,6 @@ pages:
       aliyun-nls:
         description: 阿里雲 NLS
         title: 阿里雲 NLS
-      browser-web-speech-api:
-        description: 瀏覽器原生 STT（需要 Chrome/Edge/Safari）
-        title: 網頁語音 API
       official:
         title: Official Provider
         description: Official AI provider by AIRI.

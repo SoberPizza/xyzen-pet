@@ -670,18 +670,6 @@ pages:
           title: Configuraciones de Voz
     description: LLMs, proveedores de voz, etc.
     provider:
-      app-local-audio-transcription:
-        title: App (Local)
-        description: https://github.com/moeru-ai/xsai-transformers
-      app-local-audio-speech:
-        title: App (Local)
-        description: https://github.com/moeru-ai/xsai-transformers
-      browser-local-audio-transcription:
-        title: Navegador (Local)
-        description: https://github.com/moeru-ai/xsai-transformers
-      browser-local-audio-speech:
-        title: Navegador (Local)
-        description: https://github.com/moeru-ai/xsai-transformers
       alibaba-cloud-model-studio:
         description: bailian.console.aliyun.com
         title: Alibaba Cloud Model Studio
@@ -729,9 +717,6 @@ pages:
       deepgram-tts:
         description: deepgram.com
         title: Deepgram
-      speech-noop:
-        title: Ninguno
-        description: Sin salida de voz.
       deepseek:
         description: deepseek.com
         title: DeepSeek
@@ -774,31 +759,6 @@ pages:
           validation:
             error-missing-api-key: Por favor ingresa una clave API para probar la voz.
         title: ElevenLabs
-      kokoro-local:
-        description: Texto local de voz usando Kokoro-82M.
-        fields:
-          field:
-            model:
-              label: Selección de modelo
-              description: Los modelos más pequeños cargan más rápido, pero pueden tener una calidad ligeramente menor.
-        models:
-          fp32-webgpu:
-            description: >-
-              Modelo de precisión completa usando WebGPU - Recomendado para dispositivos compatibles
-          fp32:
-            description: Modelo de máxima precisión
-          fp16:
-            description: Precisión media
-          q8:
-            description: Cuantificado de 8-bits
-          q4:
-            description: Cuantificado de 4-bits
-          q4f16:
-            description: 4-bit con FP16
-        playground:
-          default-text: '¡Hola! Esta es una prueba del sistema de texto a voz de Kokoro.'
-          title: Campo de voz
-        title: TTS de Kokoro (local)
       fireworks:
         description: fireworks.ai
         title: Fireworks.ai
@@ -910,9 +870,6 @@ pages:
       aliyun-nls:
         description: Aliyun NLS
         title: Aliyun NLS
-      browser-web-speech-api:
-        description: Browser-native STT (requires Chrome/Edge/Safari)
-        title: Web Speech API
       official:
         title: Official Provider
         description: Official AI provider by AIRI.
