@@ -1,6 +1,8 @@
+export { default as CreatureScene } from './components/Creature/CreatureScene.vue'
 export { default as LightOrbScene } from './components/LightOrb/LightOrbScene.vue'
 export { default as ThreeScene } from './components/ThreeScene.vue'
 export * from './composables/hit-test'
+export type { OrbActivity, OrbEmotion } from './composables/orb/types'
 export * from './composables/render-target'
 export { useModelStore } from './stores/model-store'
 export * from './trace'

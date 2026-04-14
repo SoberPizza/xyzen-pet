@@ -927,6 +927,7 @@ export const useProvidersStore = defineStore('providers', () => {
       descriptionKey: 'settings.pages.providers.provider.sensevoice-local-server.description',
       description: 'FunASR SenseVoice local server with emotion recognition',
       icon: 'i-carbon:microphone',
+      requiresCredentials: false,
       defaultOptions: () => ({
         baseUrl: 'ws://localhost:10095',
       }),

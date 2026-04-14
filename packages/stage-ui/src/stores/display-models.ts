@@ -13,6 +13,7 @@ export enum DisplayModelFormat {
   PMXDirectory = 'pmx-directory',
   PMD = 'pmd',
   Particles = 'particles',
+  Creature = 'creature',
 }
 
 export type DisplayModel
@@ -53,6 +54,7 @@ const displayModelsPresets: DisplayModel[] = [
   { id: 'preset-vrm-1', format: DisplayModelFormat.VRM, type: 'url', url: presetVrmAvatarAUrl, name: 'AvatarSample_A', previewImage: presetVrmAvatarAPreview, importedAt: 1733113886840 },
   { id: 'preset-vrm-2', format: DisplayModelFormat.VRM, type: 'url', url: presetVrmAvatarBUrl, name: 'AvatarSample_B', previewImage: presetVrmAvatarBPreview, importedAt: 1733113886840 },
   { id: 'preset-particles-1', format: DisplayModelFormat.Particles, type: 'url', url: '', name: 'Light Orb (Holographic)', importedAt: 1733113886840 },
+  { id: 'preset-creature-1', format: DisplayModelFormat.Creature, type: 'url', url: '', name: 'Fox Spirit (Holographic)', importedAt: 1733113886840 },
 ]
 
 export const useDisplayModelsStore = defineStore('display-models', () => {

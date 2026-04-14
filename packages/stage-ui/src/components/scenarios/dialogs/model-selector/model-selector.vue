@@ -67,6 +67,7 @@ const mapFormatRenderer: Record<DisplayModelFormat, string> = {
   [DisplayModelFormat.PMXZip]: 'MMD',
   [DisplayModelFormat.PMD]: 'MMD',
   [DisplayModelFormat.Particles]: 'Particles',
+  [DisplayModelFormat.Creature]: 'Creature',
 }
 
 const live2dDialog = useFileDialog({ accept: '.zip', multiple: false, reset: true })

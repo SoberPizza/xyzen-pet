@@ -7,7 +7,7 @@ import { computed, watch } from 'vue'
 
 import { DisplayModelFormat, useDisplayModelsStore } from '../display-models'
 
-export type StageModelRenderer = 'live2d' | 'vrm' | 'particles' | 'disabled' | undefined
+export type StageModelRenderer = 'live2d' | 'vrm' | 'particles' | 'creature' | 'disabled' | undefined
 
 export const useSettingsStageModel = defineStore('settings-stage-model', () => {
   const displayModelsStore = useDisplayModelsStore()
@@ -71,6 +71,9 @@ export const useSettingsStageModel = defineStore('settings-stage-model', () => {
         break
       case DisplayModelFormat.Particles:
         stageModelRenderer.value = 'particles'
+        break
+      case DisplayModelFormat.Creature:
+        stageModelRenderer.value = 'creature'
         break
       default:
         stageModelRenderer.value = 'disabled'

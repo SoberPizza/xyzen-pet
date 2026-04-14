@@ -8,6 +8,7 @@ import { storeToRefs } from 'pinia'
 import { computed, ref } from 'vue'
 
 import Live2D from './live2d.vue'
+import Particles from './particles.vue'
 import VRM from './vrm.vue'
 
 import { DisplayModelFormat } from '../../../../stores/display-models'
@@ -88,6 +89,12 @@ async function handleModelPick(selectedModel: DisplayModel | undefined) {
       :palette="palette"
       :runtime-snapshot="runtimeSnapshot"
       @extract-colors-from-model="$emit('extractColorsFromModel')"
+    />
+    <Particles
+      v-if="effectiveRenderer === 'particles'"
+    />
+    <Particles
+      v-if="effectiveRenderer === 'creature'"
     />
   </div>
 </template>

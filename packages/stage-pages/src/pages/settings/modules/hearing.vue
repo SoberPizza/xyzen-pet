@@ -5,6 +5,7 @@ import { AddProviderDialog, Alert, EditProviderDialog, ErrorContainer, LevelMete
 import { useAnalytics, useAudioAnalyzer, useAudioRecorder } from '@proj-airi/stage-ui/composables'
 import { useVAD } from '@proj-airi/stage-ui/stores/ai/models/vad'
 import { useAudioContext } from '@proj-airi/stage-ui/stores/audio'
+import { useLocalAIServiceStatusStore } from '@proj-airi/stage-ui/stores/local-ai-service-status'
 import { CONFIDENCE_THRESHOLD_DISABLED, useHearingSpeechInputPipeline, useHearingStore } from '@proj-airi/stage-ui/stores/modules/hearing'
 import { useProvidersStore } from '@proj-airi/stage-ui/stores/providers'
 import { useSettingsAudioDevice } from '@proj-airi/stage-ui/stores/settings'
@@ -488,6 +489,10 @@ watch(activeTranscriptionProvider, async (provider) => {
     }
   }
 }, { immediate: true })
+
+// FunASR service status from the shared store (auto-started at app level)
+const localAIStatusStore = useLocalAIServiceStatusStore()
+const funasrServiceState = localAIStatusStore.getServiceState('funasr')
 
 onMounted(async () => {
   // Audio devices are loaded on demand when user requests them

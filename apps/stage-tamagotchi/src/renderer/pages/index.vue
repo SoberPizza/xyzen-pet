@@ -153,6 +153,30 @@ const modelSettingsRuntimeSnapshot = computed<ModelSettingsRuntimeSnapshot>(() =
     })
   }
 
+  if (stageModelRenderer.value === 'particles') {
+    return createEmptyModelSettingsRuntimeSnapshot({
+      ownerInstanceId: modelSettingsRuntimeOwnerInstanceId,
+      renderer: 'particles',
+      phase: 'mounted',
+      controlsLocked: false,
+      previewAvailable: false,
+      canCapturePreview: false,
+      updatedAt: Date.now(),
+    })
+  }
+
+  if (stageModelRenderer.value === 'creature') {
+    return createEmptyModelSettingsRuntimeSnapshot({
+      ownerInstanceId: modelSettingsRuntimeOwnerInstanceId,
+      renderer: 'creature',
+      phase: 'mounted',
+      controlsLocked: false,
+      previewAvailable: false,
+      canCapturePreview: false,
+      updatedAt: Date.now(),
+    })
+  }
+
   return createEmptyModelSettingsRuntimeSnapshot({
     ownerInstanceId: modelSettingsRuntimeOwnerInstanceId,
     updatedAt: Date.now(),

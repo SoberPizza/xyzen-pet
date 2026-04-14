@@ -413,6 +413,24 @@ pages:
             show_more: 收起
             subtitle: 选择一个默认模型
             title: 模型
+          local-llm:
+            title: 本地 LLM 服务
+            env-check: llama-server 环境
+            checking: 正在检测 llama-server 可用性...
+            env-ready: 'llama-server 就绪（{version}）'
+            env-not-ready: 未找到 llama-server — 请通过 brew install llama.cpp 安装
+            model-path-label: GGUF 模型路径
+            port-label: 端口
+            context-length-label: 上下文长度
+            gpu-layers-label: GPU 层数
+            service-running: llama-server 运行中
+            service-starting: llama-server 启动中...
+            service-stopped: llama-server 未运行
+            service-error: llama-server 错误
+            start-service: 启动服务
+            stop-service: 停止服务
+            setup-instructions: 快速设置
+            download-model: 下载 GGUF 模型并在上方设置路径
       title: 意识
     description: 思维，视觉，言语综合，游戏等
     gaming-factorio:
@@ -907,6 +925,9 @@ pages:
       featherless:
         description: featherless.ai
         title: Featherless AI
+      llama-cpp-local:
+        title: llama.cpp（本地）
+        description: llama.cpp 本地推理服务器，支持 Metal 加速
       lm-studio:
         description: lmstudio.ai
         title: LM Studio
@@ -945,6 +966,17 @@ pages:
         url-label: WebSocket 地址
         setup-title: 快速设置
         ready: 配置就绪
+        service-status: 服务状态
+        service-stopped: FunASR 服务未运行
+        service-starting: FunASR 服务启动中（首次启动可能需要下载模型）...
+        service-running: FunASR 服务运行中
+        service-error: 'FunASR 服务错误：{error}'
+        start-service: 启动 FunASR
+        stop-service: 停止 FunASR
+        python-check: Python 环境
+        env-ready: '环境就绪（funasr {version}）'
+        env-not-ready: 环境未就绪 — 请运行 pnpm install 以配置 FunASR
+        checking-python: 正在检测 Python 环境...
       browser-web-speech-api:
         description: 浏览器原生STT (需要 Chrome/Edge/Safari)
         title: Web 语音API

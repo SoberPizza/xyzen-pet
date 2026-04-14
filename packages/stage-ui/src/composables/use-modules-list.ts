@@ -6,6 +6,7 @@ import { useI18n } from 'vue-i18n'
 
 import factorioIcon from '../assets/factorio-simple.png'
 
+import { useLocalAIServiceStatusStore } from '../stores/local-ai-service-status'
 import { useConsciousnessStore } from '../stores/modules/consciousness'
 import { useDiscordStore } from '../stores/modules/discord'
 import { useFactorioStore } from '../stores/modules/gaming-factorio'
@@ -25,6 +26,8 @@ export interface Module {
   to: string
   configured: boolean
   category: string
+  /** Backend service status. undefined = no backend service required */
+  serviceStatus?: 'stopped' | 'starting' | 'running' | 'error'
 }
 
 export function useModulesList() {
@@ -39,6 +42,8 @@ export function useModulesList() {
   const twitterStore = useTwitterStore()
   const minecraftStore = useMinecraftStore()
   const factorioStore = useFactorioStore()
+  const localAIStatusStore = useLocalAIServiceStatusStore()
+  const funasrState = localAIStatusStore.getServiceState('funasr')
   const beatSyncState = ref<BeatSyncDetectorState>()
 
   minecraftStore.initialize()
@@ -70,6 +75,9 @@ export function useModulesList() {
       to: '/settings/modules/hearing',
       configured: hearingStore.configured,
       category: 'essential',
+      serviceStatus: hearingStore.activeTranscriptionProvider === 'sensevoice-local-server'
+        ? funasrState.value
+        : undefined,
     },
     {
       id: 'vision',

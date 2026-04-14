@@ -430,6 +430,24 @@ pages:
             show_more: Show more
             subtitle: Select a default model from the provider
             title: Model
+          local-llm:
+            title: Local LLM Server
+            env-check: llama-server Environment
+            checking: Checking llama-server availability...
+            env-ready: 'llama-server ready ({version})'
+            env-not-ready: llama-server not found — install via brew install llama.cpp
+            model-path-label: GGUF Model Path
+            port-label: Port
+            context-length-label: Context Length
+            gpu-layers-label: GPU Layers
+            service-running: llama-server is running
+            service-starting: llama-server is starting...
+            service-stopped: llama-server is not running
+            service-error: llama-server error
+            start-service: Start Server
+            stop-service: Stop Server
+            setup-instructions: Quick Setup
+            download-model: Download a GGUF model and set the path above
       title: Consciousness
     description: Thinking, vision, speech synthesis, gaming, etc.
     gaming-factorio:
@@ -954,6 +972,9 @@ pages:
       featherless:
         description: featherless.ai
         title: Featherless AI
+      llama-cpp-local:
+        title: llama.cpp (Local)
+        description: llama.cpp local inference server with Metal acceleration
       lm-studio:
         description: lmstudio.ai
         title: LM Studio
@@ -992,6 +1013,17 @@ pages:
         url-label: WebSocket URL
         setup-title: Quick Setup
         ready: Configuration ready
+        service-status: Service Status
+        service-stopped: FunASR service is not running
+        service-starting: FunASR service is starting (first launch may download models)...
+        service-running: FunASR service is running
+        service-error: 'FunASR service error: {error}'
+        start-service: Start FunASR
+        stop-service: Stop FunASR
+        python-check: Python Environment
+        env-ready: 'Environment ready (funasr {version})'
+        env-not-ready: Environment not ready — run pnpm install to set up FunASR
+        checking-python: Checking Python environment...
       browser-web-speech-api:
         description: Browser-native STT (requires Chrome/Edge/Safari)
         title: Web Speech API

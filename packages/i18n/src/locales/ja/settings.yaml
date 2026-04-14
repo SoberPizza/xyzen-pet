@@ -413,6 +413,24 @@ pages:
             show_more: もっと表示
             subtitle: プロバイダーからデフォルトモデルを選択してください
             title: モデル
+          local-llm:
+            title: ローカルLLMサーバー
+            env-check: llama-server 環境
+            checking: llama-server の利用可能状況を確認中...
+            env-ready: 'llama-server 準備完了（{version}）'
+            env-not-ready: llama-server が見つかりません — brew install llama.cpp でインストールしてください
+            model-path-label: GGUFモデルパス
+            port-label: ポート
+            context-length-label: コンテキスト長
+            gpu-layers-label: GPUレイヤー数
+            service-running: llama-server が稼働中
+            service-starting: llama-server を起動中...
+            service-stopped: llama-server が停止中
+            service-error: llama-server エラー
+            start-service: サーバーを起動
+            stop-service: サーバーを停止
+            setup-instructions: クイックセットアップ
+            download-model: GGUFモデルをダウンロードし、上記にパスを設定してください
       title: 意識
     description: 思考、視覚、音声合成、ゲームなど。
     gaming-factorio:
@@ -907,6 +925,9 @@ pages:
       featherless:
         description: featherless.ai
         title: Featherless AI
+      llama-cpp-local:
+        title: llama.cpp（ローカル）
+        description: llama.cpp ローカル推論サーバー（Metal加速対応）
       lm-studio:
         description: lmstudio.ai
         title: LM Studio
@@ -945,6 +966,17 @@ pages:
         url-label: WebSocket URL
         setup-title: クイックセットアップ
         ready: 設定完了
+        service-status: サービス状態
+        service-stopped: FunASR サービスが停止中
+        service-starting: FunASR サービスを起動中（初回はモデルのダウンロードが必要です）...
+        service-running: FunASR サービスが稼働中
+        service-error: 'FunASR サービスエラー：{error}'
+        start-service: FunASR を起動
+        stop-service: FunASR を停止
+        python-check: Python 環境
+        env-ready: '環境準備完了（funasr {version}）'
+        env-not-ready: 環境が未準備です — pnpm install を実行して FunASR をセットアップしてください
+        checking-python: Python 環境を確認中...
       browser-web-speech-api:
         description: ブラウザネイティブSTT (Chrome/Edge/Safariが必要)
         title: Web Speech API

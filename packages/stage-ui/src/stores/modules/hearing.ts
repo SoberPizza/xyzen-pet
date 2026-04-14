@@ -201,11 +201,15 @@ export const useHearingStore = defineStore('hearing-store', () => {
     const features = providersStore.getTranscriptionFeatures(providerId)
     const streamExecutor = STREAM_TRANSCRIPTION_EXECUTORS[providerId]
 
+    console.debug('[Hearing] transcription called', { providerId, model, hasStream: !!normalizedInput.inputAudioStream, hasFile: !!normalizedInput.file, features, hasExecutor: !!streamExecutor })
+
     if (features.supportsStreamOutput && streamExecutor) {
       // TODO: integrate VAD-driven silence detection to stop and restart realtime sessions based on silence thresholds.
       const request = provider.transcription(model, options?.providerOptions)
+      console.debug('[Hearing] Stream transcription request:', { ...request, inputAudioStream: normalizedInput.inputAudioStream ? '<ReadableStream>' : undefined })
 
       if (features.supportsStreamInput && normalizedInput.inputAudioStream) {
+        console.debug('[Hearing] Using stream input path for', providerId)
         const streamResult = streamExecutor({
           ...request,
           inputAudioStream: normalizedInput.inputAudioStream,

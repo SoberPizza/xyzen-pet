@@ -106,6 +106,30 @@ const runtimeSnapshot = computed<ModelSettingsRuntimeSnapshot>(() => {
     })
   }
 
+  if (stageModelRenderer.value === 'particles') {
+    return createEmptyModelSettingsRuntimeSnapshot({
+      ownerInstanceId: vrmPreviewStageInstanceId,
+      renderer: 'particles',
+      phase: 'mounted',
+      controlsLocked: false,
+      previewAvailable: false,
+      canCapturePreview: false,
+      updatedAt: Date.now(),
+    })
+  }
+
+  if (stageModelRenderer.value === 'creature') {
+    return createEmptyModelSettingsRuntimeSnapshot({
+      ownerInstanceId: vrmPreviewStageInstanceId,
+      renderer: 'creature',
+      phase: 'mounted',
+      controlsLocked: false,
+      previewAvailable: false,
+      canCapturePreview: false,
+      updatedAt: Date.now(),
+    })
+  }
+
   return createEmptyModelSettingsRuntimeSnapshot({
     ownerInstanceId: vrmPreviewStageInstanceId,
     updatedAt: Date.now(),

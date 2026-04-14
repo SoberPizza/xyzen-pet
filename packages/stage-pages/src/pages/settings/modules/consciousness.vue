@@ -1,10 +1,27 @@
 <script setup lang="ts">
+import type {
+  LocalAICheckLlamaResult,
+  LocalAILlamaServerConfig,
+  LocalAIServiceStatus,
+  LocalAIStatusResult,
+} from '@proj-airi/stage-shared/local-ai'
+
+import { defineInvoke } from '@moeru/eventa'
+import { createContext } from '@moeru/eventa/adapters/electron/renderer'
+import { isElectronWindow } from '@proj-airi/stage-shared'
+import {
+  localAICheckLlamaEventa,
+  localAIConfigureLlamaEventa,
+  localAIGetStatusEventa,
+  localAIStopEventa,
+} from '@proj-airi/stage-shared/local-ai'
 import { AddProviderDialog, Alert, EditProviderDialog, ErrorContainer, RadioCardManySelect, RadioCardSimple } from '@proj-airi/stage-ui/components'
 import { useAnalytics } from '@proj-airi/stage-ui/composables'
 import { useConsciousnessStore } from '@proj-airi/stage-ui/stores/modules/consciousness'
 import { useProvidersStore } from '@proj-airi/stage-ui/stores/providers'
+import { Button, FieldInput } from '@proj-airi/ui'
 import { storeToRefs } from 'pinia'
-import { ref, watch } from 'vue'
+import { computed, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 const providersStore = useProvidersStore()
@@ -28,6 +45,108 @@ const showAddDialog = ref(false)
 const showEditDialog = ref(false)
 const editingProviderId = ref('')
 
+// llama-server service management (Electron only)
+const isElectron = typeof window !== 'undefined' && isElectronWindow(window)
+const llamaCheck = ref<LocalAICheckLlamaResult | null>(null)
+const isCheckingLlama = ref(false)
+const isTogglingLlamaService = ref(false)
+const llamaServiceStatus = ref<LocalAIServiceStatus | null>(null)
+
+const llamaModelPath = ref('')
+const llamaPort = ref(8080)
+const llamaContextLength = ref(2048)
+const llamaGpuLayers = ref(-1)
+
+let invokeLlamaCheck: (() => Promise<LocalAICheckLlamaResult>) | undefined
+let invokeLlamaConfigure: ((payload: LocalAILlamaServerConfig) => Promise<LocalAIServiceStatus>) | undefined
+let invokeStop: ((payload: { serviceId: string }) => Promise<LocalAIServiceStatus>) | undefined
+let invokeGetStatus: (() => Promise<LocalAIStatusResult>) | undefined
+let llamaStatusPollTimer: ReturnType<typeof setInterval> | undefined
+
+if (isElectron) {
+  const { context } = createContext((window as any).electron.ipcRenderer)
+  invokeLlamaCheck = defineInvoke(context, localAICheckLlamaEventa)
+  invokeLlamaConfigure = defineInvoke(context, localAIConfigureLlamaEventa)
+  invokeStop = defineInvoke(context, localAIStopEventa)
+  invokeGetStatus = defineInvoke(context, localAIGetStatusEventa)
+}
+
+const isLlamaServiceRunning = computed(() => llamaServiceStatus.value?.state === 'running')
+const isLlamaServiceStarting = computed(() => llamaServiceStatus.value?.state === 'starting')
+const showLlamaServerControls = computed(() => activeProvider.value === 'llama-cpp-local' && isElectron)
+
+async function refreshLlamaStatus() {
+  if (!invokeGetStatus)
+    return
+  try {
+    const result = await invokeGetStatus()
+    llamaServiceStatus.value = result.services.find(s => s.serviceId === 'llama-server') ?? null
+  }
+  catch (err) {
+    console.warn('[Consciousness] Failed to get llama-server status:', err)
+  }
+}
+
+async function checkLlamaEnv() {
+  if (!invokeLlamaCheck)
+    return
+  isCheckingLlama.value = true
+  try {
+    llamaCheck.value = await invokeLlamaCheck()
+  }
+  catch (err) {
+    console.warn('[Consciousness] Failed to check llama-server:', err)
+  }
+  finally {
+    isCheckingLlama.value = false
+  }
+}
+
+async function handleStartLlamaService() {
+  if (!invokeLlamaConfigure || !llamaModelPath.value.trim())
+    return
+  isTogglingLlamaService.value = true
+  try {
+    llamaServiceStatus.value = await invokeLlamaConfigure({
+      modelPath: llamaModelPath.value,
+      port: llamaPort.value,
+      contextLength: llamaContextLength.value,
+      gpuLayers: llamaGpuLayers.value,
+    })
+    // Sync provider baseUrl with configured port
+    syncLlamaBaseUrl()
+  }
+  catch (err) {
+    console.error('[Consciousness] Failed to start llama-server:', err)
+  }
+  finally {
+    isTogglingLlamaService.value = false
+  }
+}
+
+async function handleStopLlamaService() {
+  if (!invokeStop)
+    return
+  isTogglingLlamaService.value = true
+  try {
+    llamaServiceStatus.value = await invokeStop({ serviceId: 'llama-server' })
+  }
+  catch (err) {
+    console.error('[Consciousness] Failed to stop llama-server:', err)
+  }
+  finally {
+    isTogglingLlamaService.value = false
+  }
+}
+
+function syncLlamaBaseUrl() {
+  const providerId = 'llama-cpp-local'
+  if (!providersStore.providers[providerId]) {
+    providersStore.providers[providerId] = {}
+  }
+  providersStore.providers[providerId].baseUrl = `http://localhost:${llamaPort.value}/v1/`
+}
+
 watch(activeProvider, async (provider, oldProvider) => {
   if (!provider)
     return
@@ -37,7 +156,25 @@ watch(activeProvider, async (provider, oldProvider) => {
   }
 
   await consciousnessStore.loadModelsForProvider(provider)
+
+  // Start llama status polling when llama-cpp-local is selected
+  if (provider === 'llama-cpp-local' && isElectron) {
+    checkLlamaEnv()
+    refreshLlamaStatus()
+    if (!llamaStatusPollTimer) {
+      llamaStatusPollTimer = setInterval(refreshLlamaStatus, 3000)
+    }
+  }
+  else if (llamaStatusPollTimer) {
+    clearInterval(llamaStatusPollTimer)
+    llamaStatusPollTimer = undefined
+  }
 }, { immediate: true })
+
+onUnmounted(() => {
+  if (llamaStatusPollTimer)
+    clearInterval(llamaStatusPollTimer)
+})
 
 function updateCustomModelName(value: string) {
   customModelName.value = value
@@ -108,6 +245,134 @@ function handleProviderDeleted() {
                 </template>
               </RadioCardSimple>
             </fieldset>
+          </div>
+        </div>
+
+        <!-- llama-server controls (shown when llama-cpp-local is selected in Electron) -->
+        <div v-if="showLlamaServerControls" :class="['flex flex-col gap-3']">
+          <h2 :class="['text-lg text-neutral-500 md:text-2xl dark:text-neutral-500']">
+            {{ t('settings.pages.modules.consciousness.sections.section.local-llm.title') }}
+          </h2>
+
+          <!-- Environment check -->
+          <div :class="['rounded-lg bg-neutral-100/60 p-3 text-xs dark:bg-neutral-800/40']">
+            <p :class="['font-medium text-neutral-600 dark:text-neutral-300']">
+              {{ t('settings.pages.modules.consciousness.sections.section.local-llm.env-check') }}
+            </p>
+            <div :class="['mt-1.5']">
+              <template v-if="isCheckingLlama">
+                <span :class="['text-neutral-500 dark:text-neutral-400']">
+                  {{ t('settings.pages.modules.consciousness.sections.section.local-llm.checking') }}
+                </span>
+              </template>
+              <template v-else-if="llamaCheck?.llamaServerFound">
+                <span :class="['text-green-600 dark:text-green-400']">
+                  {{ t('settings.pages.modules.consciousness.sections.section.local-llm.env-ready', { version: llamaCheck.version ?? '' }) }}
+                </span>
+              </template>
+              <template v-else>
+                <span :class="['text-amber-600 dark:text-amber-400']">
+                  {{ t('settings.pages.modules.consciousness.sections.section.local-llm.env-not-ready') }}
+                </span>
+              </template>
+            </div>
+          </div>
+
+          <!-- Model configuration -->
+          <FieldInput
+            v-model="llamaModelPath"
+            :label="t('settings.pages.modules.consciousness.sections.section.local-llm.model-path-label')"
+            placeholder="/path/to/model.gguf"
+          />
+          <div :class="['grid grid-cols-3 gap-3']">
+            <FieldInput
+              v-model.number="llamaPort"
+              :label="t('settings.pages.modules.consciousness.sections.section.local-llm.port-label')"
+              type="number"
+              placeholder="8080"
+            />
+            <FieldInput
+              v-model.number="llamaContextLength"
+              :label="t('settings.pages.modules.consciousness.sections.section.local-llm.context-length-label')"
+              type="number"
+              placeholder="2048"
+            />
+            <FieldInput
+              v-model.number="llamaGpuLayers"
+              :label="t('settings.pages.modules.consciousness.sections.section.local-llm.gpu-layers-label')"
+              type="number"
+              placeholder="-1"
+            />
+          </div>
+
+          <!-- Service status and controls -->
+          <div
+            :class="['rounded-lg border p-3', {
+              'border-green-200/80 bg-green-50/60 dark:border-green-700/40 dark:bg-green-900/20': isLlamaServiceRunning,
+              'border-amber-200/80 bg-amber-50/60 dark:border-amber-700/40 dark:bg-amber-900/20': isLlamaServiceStarting,
+              'border-neutral-200/80 bg-neutral-50/60 dark:border-neutral-700/40 dark:bg-neutral-800/40': !isLlamaServiceRunning && !isLlamaServiceStarting,
+            }]"
+          >
+            <div :class="['flex items-center justify-between']">
+              <div :class="['flex items-center gap-2']">
+                <span
+                  :class="['inline-block h-2 w-2 rounded-full', {
+                    'bg-green-500': isLlamaServiceRunning,
+                    'bg-amber-500 animate-pulse': isLlamaServiceStarting,
+                    'bg-red-500': llamaServiceStatus?.state === 'error',
+                    'bg-neutral-400': !llamaServiceStatus || llamaServiceStatus.state === 'stopped',
+                  }]"
+                />
+                <span
+                  :class="['text-sm font-medium', {
+                    'text-green-700 dark:text-green-300': isLlamaServiceRunning,
+                    'text-amber-700 dark:text-amber-300': isLlamaServiceStarting,
+                    'text-red-700 dark:text-red-300': llamaServiceStatus?.state === 'error',
+                    'text-neutral-600 dark:text-neutral-400': !llamaServiceStatus || llamaServiceStatus.state === 'stopped',
+                  }]"
+                >
+                  <template v-if="isLlamaServiceRunning">
+                    {{ t('settings.pages.modules.consciousness.sections.section.local-llm.service-running') }}
+                  </template>
+                  <template v-else-if="isLlamaServiceStarting">
+                    {{ t('settings.pages.modules.consciousness.sections.section.local-llm.service-starting') }}
+                  </template>
+                  <template v-else-if="llamaServiceStatus?.state === 'error'">
+                    {{ llamaServiceStatus.lastError ?? t('settings.pages.modules.consciousness.sections.section.local-llm.service-error') }}
+                  </template>
+                  <template v-else>
+                    {{ t('settings.pages.modules.consciousness.sections.section.local-llm.service-stopped') }}
+                  </template>
+                </span>
+              </div>
+
+              <Button
+                v-if="!isLlamaServiceStarting"
+                :disabled="isTogglingLlamaService || (!llamaCheck?.llamaServerFound && !isLlamaServiceRunning) || (!llamaModelPath.trim() && !isLlamaServiceRunning)"
+                size="sm"
+                :variant="isLlamaServiceRunning ? 'secondary' : 'primary'"
+                @click="isLlamaServiceRunning ? handleStopLlamaService() : handleStartLlamaService()"
+              >
+                {{ isLlamaServiceRunning
+                  ? t('settings.pages.modules.consciousness.sections.section.local-llm.stop-service')
+                  : t('settings.pages.modules.consciousness.sections.section.local-llm.start-service')
+                }}
+              </Button>
+            </div>
+          </div>
+
+          <!-- Setup instructions (when llama-server not found) -->
+          <div
+            v-if="llamaCheck && !llamaCheck.llamaServerFound"
+            :class="['rounded-lg bg-neutral-100/60 p-3 text-xs text-neutral-500 dark:bg-neutral-800/40 dark:text-neutral-400']"
+          >
+            <p :class="['font-medium']">
+              {{ t('settings.pages.modules.consciousness.sections.section.local-llm.setup-instructions') }}
+            </p>
+            <ol :class="['mt-1.5 list-inside list-decimal space-y-1']">
+              <li><code>brew install llama.cpp</code></li>
+              <li>{{ t('settings.pages.modules.consciousness.sections.section.local-llm.download-model') }}</li>
+            </ol>
           </div>
         </div>
 

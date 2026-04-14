@@ -203,6 +203,9 @@ export interface ElectronMcpCallToolResult {
   isError?: boolean
 }
 
+export { electron } from '@proj-airi/electron-eventa'
+export * from '@proj-airi/electron-eventa/electron-updater'
+
 export const electronMcpOpenConfigFile = defineInvokeEventa<{ path: string }>('eventa:invoke:electron:mcp:open-config-file')
 export const electronMcpApplyAndRestart = defineInvokeEventa<ElectronMcpStdioApplyResult>('eventa:invoke:electron:mcp:apply-and-restart')
 export const electronMcpGetRuntimeStatus = defineInvokeEventa<ElectronMcpStdioRuntimeStatus>('eventa:invoke:electron:mcp:get-runtime-status')
@@ -290,5 +293,15 @@ export const electronAuthLogout = defineInvokeEventa<void>('eventa:invoke:electr
 export const i18nSetLocale = defineInvokeEventa<void, Locale>('eventa:invoke:electron:i18n:set-locale')
 export const i18nGetLocale = defineInvokeEventa<Locale>('eventa:invoke:electron:i18n:get-locale')
 
-export { electron } from '@proj-airi/electron-eventa'
-export * from '@proj-airi/electron-eventa/electron-updater'
+// Local AI service management — re-exported from stage-shared for cross-package use
+export type {
+  LocalAICheckPythonResult as ElectronLocalAICheckPythonResult,
+  LocalAIServiceStatus as ElectronLocalAIServiceStatus,
+  LocalAIStatusResult as ElectronLocalAIStatusResult,
+} from '@proj-airi/stage-shared/local-ai'
+export {
+  localAICheckPythonEventa as electronLocalAICheckPython,
+  localAIGetStatusEventa as electronLocalAIGetStatus,
+  localAIStartEventa as electronLocalAIStart,
+  localAIStopEventa as electronLocalAIStop,
+} from '@proj-airi/stage-shared/local-ai'

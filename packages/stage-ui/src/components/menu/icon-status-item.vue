@@ -7,6 +7,8 @@ const props = defineProps<{
   iconImage?: string
   to: string
   configured?: boolean
+  /** Backend service status. undefined = no backend service required */
+  serviceStatus?: 'stopped' | 'starting' | 'running' | 'error'
 }>()
 </script>
 
@@ -75,7 +77,22 @@ const props = defineProps<{
       </template>
     </RouterLink>
     <div p-2>
-      <div v-if="props.configured" size-4 bg="green-500" rounded-full shadow="lg" />
+      <!-- configured + service running (or no service needed) -->
+      <div
+        v-if="props.configured && (!props.serviceStatus || props.serviceStatus === 'running')"
+        size-4 bg="green-500" rounded-full shadow="lg"
+      />
+      <!-- configured + service starting -->
+      <div
+        v-else-if="props.configured && props.serviceStatus === 'starting'"
+        :class="['size-4 rounded-full shadow-lg', 'bg-amber-500 animate-pulse']"
+      />
+      <!-- configured + service stopped or error -->
+      <div
+        v-else-if="props.configured && (props.serviceStatus === 'stopped' || props.serviceStatus === 'error')"
+        size-4 bg="red-500" rounded-full shadow="lg"
+      />
+      <!-- not configured -->
       <div v-else size-4 border="2 neutral-200 dark:neutral-700" rounded-full bg="white dark:neutral-900" />
     </div>
   </div>

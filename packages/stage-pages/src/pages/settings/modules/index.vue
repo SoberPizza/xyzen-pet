@@ -24,6 +24,7 @@ const { lastClickedIndex, setLastClickedIndex } = useRippleGridState()
           :icon-image="module.iconImage"
           :to="module.to"
           :configured="module.configured"
+          :service-status="module.serviceStatus"
         />
       </template>
     </RippleGrid>

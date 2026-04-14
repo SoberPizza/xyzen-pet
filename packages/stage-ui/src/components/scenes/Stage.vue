@@ -13,7 +13,7 @@ import { createLive2DLipSync } from '@proj-airi/model-driver-lipsync'
 import { wlipsyncProfile } from '@proj-airi/model-driver-lipsync/shared/wlipsync'
 import { createPlaybackManager, createSpeechPipeline } from '@proj-airi/pipelines-audio'
 import { Live2DScene, useLive2d } from '@proj-airi/stage-ui-live2d'
-import { LightOrbScene, ThreeScene } from '@proj-airi/stage-ui-three'
+import { CreatureScene, LightOrbScene, ThreeScene } from '@proj-airi/stage-ui-three'
 import { animations } from '@proj-airi/stage-ui-three/assets/vrm'
 import { createQueue } from '@proj-airi/stream-kit'
 import { useBroadcastChannel } from '@vueuse/core'
@@ -30,6 +30,7 @@ import { llmInferenceEndToken } from '../../constants'
 import { EMOTION_EmotionMotionName_value, EMOTION_VRMExpressionName_value, EmotionThinkMotionName } from '../../constants/emotions'
 import { useAudioContext, useSpeakingStore } from '../../stores/audio'
 import { useChatOrchestratorStore } from '../../stores/chat'
+import { useLightOrbDebugStore } from '../../stores/light-orb-debug'
 import { useAiriCardStore } from '../../stores/modules'
 import { useHearingEmotionStore } from '../../stores/modules/hearing-emotion'
 import { useSpeechStore } from '../../stores/modules/speech'
@@ -53,6 +54,8 @@ const db = ref<DuckDBWasmDrizzleDatabase>()
 
 const vrmViewerRef = ref<InstanceType<typeof ThreeScene>>()
 const live2dSceneRef = ref<InstanceType<typeof Live2DScene>>()
+const lightOrbSceneRef = ref<InstanceType<typeof LightOrbScene>>()
+const creatureSceneRef = ref<InstanceType<typeof CreatureScene>>()
 
 const settingsStore = useSettings()
 const {
@@ -71,6 +74,7 @@ const {
   live2dMaxFps,
   live2dRenderScale,
 } = storeToRefs(settingsStore)
+const lightOrbDebug = useLightOrbDebugStore()
 const { mouthOpenSize } = storeToRefs(useSpeakingStore())
 const { audioContext } = useAudioContext()
 const currentAudioSource = ref<AudioBufferSourceNode>()
@@ -544,6 +548,14 @@ watch([stageModelRenderer, () => props.paused], ([renderer]) => {
   syncLipSyncLoop()
 }, { immediate: true })
 
+// Watch debug interaction trigger and forward to LightOrbScene / CreatureScene
+watch(() => lightOrbDebug.interactionTrigger, () => {
+  if (lightOrbDebug.debugEnabled) {
+    lightOrbSceneRef.value?.triggerInteraction(1.0)
+    creatureSceneRef.value?.triggerInteraction(1.0)
+  }
+})
+
 function canvasElement() {
   if (stageModelRenderer.value === 'live2d')
     return live2dSceneRef.value?.canvasElement()
@@ -614,8 +626,31 @@ defineExpose({
       />
       <LightOrbScene
         v-if="stageModelRenderer === 'particles' && showStage"
+        ref="lightOrbSceneRef"
         v-model:state="componentState"
-        :enable-controls="stageViewControlsEnabled"
+        :enable-controls="lightOrbDebug.debugEnabled ? lightOrbDebug.debugEnableControls : stageViewControlsEnabled"
+        :mood="lightOrbDebug.debugEnabled ? lightOrbDebug.debugMood : undefined"
+        :energy="lightOrbDebug.debugEnabled ? lightOrbDebug.debugEnergy : undefined"
+        :current-emotion="lightOrbDebug.debugEnabled ? lightOrbDebug.debugEmotion : undefined"
+        :activity="lightOrbDebug.debugEnabled ? lightOrbDebug.debugActivity : undefined"
+        :raw-audio-level="lightOrbDebug.debugEnabled ? lightOrbDebug.debugAudioLevel : undefined"
+        :raw-speaking-level="lightOrbDebug.debugEnabled ? lightOrbDebug.debugSpeakingLevel : undefined"
+        :camera-distance="lightOrbDebug.debugEnabled ? lightOrbDebug.debugCameraDistance : undefined"
+        :pepper-ghost="lightOrbDebug.debugEnabled ? lightOrbDebug.debugPepperGhost : undefined"
+      />
+      <CreatureScene
+        v-if="stageModelRenderer === 'creature' && showStage"
+        ref="creatureSceneRef"
+        v-model:state="componentState"
+        :enable-controls="lightOrbDebug.debugEnabled ? lightOrbDebug.debugEnableControls : stageViewControlsEnabled"
+        :mood="lightOrbDebug.debugEnabled ? lightOrbDebug.debugMood : undefined"
+        :energy="lightOrbDebug.debugEnabled ? lightOrbDebug.debugEnergy : undefined"
+        :current-emotion="lightOrbDebug.debugEnabled ? lightOrbDebug.debugEmotion : undefined"
+        :activity="lightOrbDebug.debugEnabled ? lightOrbDebug.debugActivity : undefined"
+        :raw-audio-level="lightOrbDebug.debugEnabled ? lightOrbDebug.debugAudioLevel : undefined"
+        :raw-speaking-level="lightOrbDebug.debugEnabled ? lightOrbDebug.debugSpeakingLevel : undefined"
+        :camera-distance="lightOrbDebug.debugEnabled ? lightOrbDebug.debugCameraDistance : undefined"
+        :pepper-ghost="lightOrbDebug.debugEnabled ? lightOrbDebug.debugPepperGhost : undefined"
       />
     </div>
   </div>

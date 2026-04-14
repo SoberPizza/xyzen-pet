@@ -40,6 +40,7 @@ interface FunASRFirstFrame {
   chunk_size: number[]
   wav_name?: string
   wav_format?: string
+  audio_fs?: number
   is_speaking: boolean
   hotwords?: string
   itn?: boolean
@@ -86,6 +87,8 @@ export function streamSenseVoiceTranscription(options: SenseVoiceStreamOptions &
     ? (typeof options.baseURL === 'string' ? options.baseURL : options.baseURL.toString())
     : 'ws://localhost:10095'
 
+  console.debug('[SenseVoice] streamSenseVoiceTranscription called, baseURL:', baseURL)
+
   const audioStream = options.inputAudioStream ?? options.file?.stream()
   if (!audioStream)
     throw new TypeError('Audio stream or file is required for SenseVoice streaming transcription.')
@@ -113,12 +116,17 @@ export function streamSenseVoiceTranscription(options: SenseVoiceStreamOptions &
     let reader: ReadableStreamDefaultReader<AudioChunk> | undefined
 
     try {
+      console.debug('[SenseVoice] Connecting WebSocket to', baseURL)
       ws = new WebSocket(baseURL)
       ws.binaryType = 'arraybuffer'
 
       const openPromise = new Promise<void>((resolve, reject) => {
-        ws!.onopen = () => resolve()
+        ws!.onopen = () => {
+          console.debug('[SenseVoice] WebSocket connected')
+          resolve()
+        }
         ws!.onerror = (event) => {
+          console.error('[SenseVoice] WebSocket connection error:', event)
           reject(new Error(`WebSocket connection to FunASR server failed: ${event}`))
         }
       })
@@ -140,19 +148,27 @@ export function streamSenseVoiceTranscription(options: SenseVoiceStreamOptions &
         mode: '2pass',
         chunk_size: [5, 10, 5],
         wav_format: 'pcm',
+        audio_fs: 16000,
         is_speaking: true,
         itn: true,
       }
       ws.send(JSON.stringify(firstFrame))
+      console.debug('[SenseVoice] Sent first frame:', firstFrame)
 
       // Handle incoming messages
+      let totalBytesSent = 0
+      let audioChunkCount = 0
       ws.onmessage = (event: MessageEvent) => {
         try {
+          console.debug('[SenseVoice] Received message:', event.data)
           const response = JSON.parse(event.data as string) as FunASRResponse
-          if (!response.text)
+          if (!response.text) {
+            console.debug('[SenseVoice] Response has empty text, skipping')
             return
+          }
 
           const { cleanText, emotion } = extractSenseVoiceEmotion(response.text)
+          console.debug('[SenseVoice] Parsed:', { cleanText, emotion, rawText: response.text })
 
           if (emotion)
             options.onEmotion?.(emotion)
@@ -179,21 +195,39 @@ export function streamSenseVoiceTranscription(options: SenseVoiceStreamOptions &
       }
 
       // Stream audio data
+      console.debug('[SenseVoice] Starting audio stream reading...')
       reader = (audioStream as ReadableStream<AudioChunk>).getReader()
       while (true) {
-        if (options.abortSignal?.aborted)
+        if (options.abortSignal?.aborted) {
+          console.debug('[SenseVoice] Abort signal received, stopping audio stream')
           break
+        }
 
         const { done, value } = await reader.read()
-        if (done)
+        if (done) {
+          console.debug('[SenseVoice] Audio stream ended (done=true)')
           break
-        if (value && ws.readyState === WebSocket.OPEN)
-          ws.send(toArrayBuffer(value))
+        }
+        if (value && ws.readyState === WebSocket.OPEN) {
+          const buf = toArrayBuffer(value)
+          totalBytesSent += buf.byteLength
+          audioChunkCount++
+          if (audioChunkCount % 50 === 0) {
+            console.debug(`[SenseVoice] Audio: ${audioChunkCount} chunks, ${totalBytesSent} bytes (${(totalBytesSent / 32000).toFixed(1)}s)`)
+          }
+          ws.send(buf)
+        }
       }
+
+      console.debug(`[SenseVoice] Audio streaming done. Total: ${audioChunkCount} chunks, ${totalBytesSent} bytes`)
 
       // Send end-of-stream marker
       if (ws.readyState === WebSocket.OPEN) {
+        console.debug('[SenseVoice] Sending is_speaking: false')
         ws.send(JSON.stringify({ is_speaking: false }))
+      }
+      else {
+        console.warn('[SenseVoice] WebSocket not open when trying to send end-of-stream, state:', ws.readyState)
       }
 
       // Wait briefly for final results before closing
@@ -232,6 +266,7 @@ export function streamSenseVoiceTranscription(options: SenseVoiceStreamOptions &
       deferredText.resolve(fullText.trim())
     }
     catch (err) {
+      console.error('[SenseVoice] Stream error:', err)
       fullStreamCtrl?.error(err)
       textStreamCtrl?.error(err)
       deferredText.reject(err)

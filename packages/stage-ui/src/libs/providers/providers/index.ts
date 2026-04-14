@@ -1,5 +1,6 @@
 import './openai'
 import './aihubmix'
+import './llama-cpp-local'
 import './lm-studio'
 import './azure-openai'
 import './openai-compatible'
