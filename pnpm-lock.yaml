@@ -3841,6 +3841,18 @@ importers:
         specifier: ^5.9.3
         version: 5.9.3
 
+  services/local-ai-llama:
+    devDependencies:
+      tsx:
+        specifier: 'catalog:'
+        version: 4.21.0
+
+  services/local-ai-python:
+    devDependencies:
+      tsx:
+        specifier: 'catalog:'
+        version: 4.21.0
+
   services/minecraft:
     dependencies:
       '@guiiai/logg':

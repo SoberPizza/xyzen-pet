@@ -1,0 +1,6 @@
+{
+  "defaultModel": {
+    "repo": "unsloth/Qwen3-1.7B-GGUF",
+    "filename": "Qwen3-1.7B-Q4_K_M.gguf"
+  }
+}

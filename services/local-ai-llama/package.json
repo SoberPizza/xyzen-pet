@@ -1,0 +1,13 @@
+{
+  "name": "@proj-airi/local-ai-llama",
+  "type": "module",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Local AI llama.cpp service (LLM inference via llama-server)",
+  "scripts": {
+    "postinstall": "tsx setup.ts"
+  },
+  "devDependencies": {
+    "tsx": "catalog:"
+  }
+}

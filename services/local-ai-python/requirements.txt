@@ -27,6 +27,3 @@ x-transformers
 wetext
 wget
 protobuf
-
-# HuggingFace Hub (for downloading GGUF models)
-huggingface_hub

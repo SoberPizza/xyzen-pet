@@ -11,6 +11,10 @@ const FUNASR_MODELS = [
   'iic/speech_fsmn_vad_zh-cn-16k-common-pytorch',
 ]
 
+// NOTICE: PyPI downloads from China are extremely slow without a mirror.
+// Using TUNA mirror which is one of the most reliable Chinese PyPI mirrors.
+const PYPI_MIRROR = 'https://pypi.tuna.tsinghua.edu.cn/simple'
+
 const MIN_PYTHON_VERSION = [3, 10] as const
 const PYTHON_VERSION_RE = /Python\s+(\d+)\.(\d+)/i
 
@@ -100,7 +104,7 @@ async function ensureVenv(): Promise<string> {
   console.log('[setup] Python venv created.')
 
   // Upgrade pip inside the venv
-  await spawn(venvPython, ['-m', 'pip', 'install', '--upgrade', 'pip'])
+  await spawn(venvPython, ['-m', 'pip', 'install', '--upgrade', 'pip', '-i', PYPI_MIRROR])
 
   return venvPython
 }
@@ -121,7 +125,7 @@ async function pipInstall(python: string): Promise<void> {
   const requirementsFile = join(SERVICE_ROOT, 'requirements.txt')
   console.log('[setup] Installing Python dependencies from requirements.txt...')
   try {
-    await spawn(python, ['-m', 'pip', 'install', '--progress-bar', 'on', '-r', requirementsFile])
+    await spawn(python, ['-m', 'pip', 'install', '--progress-bar', 'on', '-i', PYPI_MIRROR, '-r', requirementsFile])
     console.log('[setup] pip install completed.')
   }
   catch (error) {
@@ -166,47 +170,6 @@ class PrintProgress(ProgressCallback):
             print(f'  {self.filename}: done', flush=True)
 
 snapshot_download('${model}', progress_callbacks=[PrintProgress])
-`.trim()
-}
-
-// NOTICE: pnpm postinstall runs without a TTY so tqdm progress bars are hidden.
-// huggingface_hub.hf_hub_download accepts tqdm_class to override the progress bar.
-function hfDownloadScript(repo: string, filename: string): string {
-  return `
-import time
-from huggingface_hub import hf_hub_download
-
-class PrintTqdm:
-    """Minimal tqdm-compatible class that prints download progress to stdout."""
-    def __init__(self, *args, **kwargs):
-        self.total = kwargs.get('total', 0)
-        self.desc = kwargs.get('desc', '')
-        self.n = 0
-        self._last_print = 0
-        self.disable = kwargs.get('disable', False)
-    def update(self, n=1):
-        if self.disable:
-            return
-        self.n += n
-        now = time.time()
-        if now - self._last_print < 2.0:
-            return
-        self._last_print = now
-        if self.total and self.total > 0:
-            pct = self.n * 100 / self.total
-            mb_down = self.n / 1048576
-            mb_total = self.total / 1048576
-            print(f'  {self.desc}: {pct:.0f}% ({mb_down:.1f}/{mb_total:.1f} MB)', flush=True)
-        else:
-            print(f'  {self.desc}: {self.n / 1048576:.1f} MB', flush=True)
-    def close(self):
-        if not self.disable and self.total and self.total > 0:
-            print(f'  {self.desc}: done ({self.total / 1048576:.1f} MB)', flush=True)
-    def __enter__(self): return self
-    def __exit__(self, *args): self.close()
-
-path = hf_hub_download(repo_id='${repo}', filename='${filename}', tqdm_class=PrintTqdm)
-print(f'Model downloaded to: {path}', flush=True)
 `.trim()
 }
 
@@ -297,88 +260,6 @@ async function downloadCosyVoiceModel(python: string): Promise<void> {
   }
 }
 
-// --- llama.cpp ---
-
-async function checkBrewInstalled(): Promise<boolean> {
-  try {
-    await exec('brew', ['--version'])
-    return true
-  }
-  catch {
-    return false
-  }
-}
-
-async function installLlamaCpp(): Promise<void> {
-  console.log('[setup] Preparing llama.cpp environment...')
-
-  // Check if llama-server is already available
-  try {
-    const { stdout } = await exec('llama-server', ['--version'])
-    console.log(`[setup] llama-server already installed: ${stdout.trim()}`)
-    return
-  }
-  catch {
-    // not installed, proceed
-  }
-
-  // macOS: install via Homebrew
-  if (process.platform === 'darwin') {
-    if (!await checkBrewInstalled()) {
-      console.warn('[setup] Homebrew not found. Skipping llama.cpp installation.')
-      console.warn('[setup] To install manually: https://github.com/ggml-org/llama.cpp#build')
-      return
-    }
-    try {
-      console.log('[setup] Installing llama.cpp via Homebrew...')
-      await spawn('brew', ['install', 'llama.cpp'])
-      console.log('[setup] llama.cpp installed successfully.')
-    }
-    catch (error) {
-      console.warn('[setup] Failed to install llama.cpp via Homebrew:', error)
-      console.warn('[setup] Local LLM (llama-server) will not be available.')
-    }
-    return
-  }
-
-  // Other platforms: inform the user
-  console.warn('[setup] Automatic llama.cpp installation is only supported on macOS (via Homebrew).')
-  console.warn('[setup] To install manually: https://github.com/ggml-org/llama.cpp#build')
-}
-
-async function downloadQwen3Model(python: string): Promise<void> {
-  // Ensure huggingface_hub is available
-  try {
-    await exec(python, ['-c', `import huggingface_hub; print(huggingface_hub.__version__)`])
-  }
-  catch {
-    console.log('[setup] Installing huggingface_hub via pip...')
-    try {
-      await spawn(python, ['-m', 'pip', 'install', '--progress-bar', 'on', 'huggingface_hub'])
-    }
-    catch (error) {
-      console.error('[setup] Failed to install huggingface_hub:', error)
-      return
-    }
-  }
-
-  // NOTICE: The official Qwen/Qwen3-1.7B-GGUF repo only has Q8_0 quant.
-  // Q4_K_M is available from unsloth's community quants.
-  const modelRepo = 'unsloth/Qwen3-1.7B-GGUF'
-  const modelFile = 'Qwen3-1.7B-Q4_K_M.gguf'
-  console.log(`[setup] Downloading Qwen3-1.7B GGUF model...`)
-  try {
-    // NOTICE: pnpm postinstall runs without a TTY so tqdm progress bars are hidden.
-    // We pass a custom tqdm_class to print plain-text progress to stdout.
-    await spawn(python, ['-c', hfDownloadScript(modelRepo, modelFile)])
-    console.log(`[setup] Qwen3-1.7B GGUF model is cached.`)
-  }
-  catch (error) {
-    console.error(`[setup] Failed to download Qwen3-1.7B GGUF model:`, error)
-    console.warn('[setup] Local LLM (llama-server with Qwen3) will not be available.')
-  }
-}
-
 // --- Main ---
 
 async function main() {
@@ -400,10 +281,6 @@ async function main() {
   await cloneCosyVoice(python)
   await downloadCosyVoiceModel(python)
   console.log('[setup] CosyVoice TTS preparation complete.')
-
-  // Install llama.cpp and download Qwen3 model
-  await installLlamaCpp()
-  await downloadQwen3Model(python)
 
   console.log('[setup] Local AI Python services setup complete.')
 }
