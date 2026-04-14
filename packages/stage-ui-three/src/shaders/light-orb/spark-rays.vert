@@ -29,8 +29,8 @@ varying float v_depth;
 #define PI2 6.28318530718
 
 void main() {
-  // Lifecycle: each ray cycles through grow -> shrink
-  float cycleSpeed = u_orbitSpeed * a_speed * 0.5;
+  // Lifecycle: each ray cycles through grow -> shrink (slow, graceful)
+  float cycleSpeed = u_orbitSpeed * a_speed * 0.25;
   float lifetime = fract(u_time * cycleSpeed + a_phase);
 
   // Sinusoidal grow/shrink: peaks at lifetime=0.5
@@ -67,7 +67,7 @@ void main() {
 
   // Alpha: peaks mid-lifecycle, fades at birth and death
   float ageFade = sin(lifetime * PI);
-  v_alpha = ageFade * (0.2 + u_energy * 0.4) * visible;
+  v_alpha = ageFade * (0.35 + u_energy * 0.5) * visible;
 
   // Color mix: based on distance from center (inner = white, outer = colored)
   v_colorMix = lifetime;
@@ -76,14 +76,14 @@ void main() {
   vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
 
   // 3D depth cue: near rays are brighter/larger, far rays are dimmer/smaller
-  // At camera distance 1.4, mvPosition.z ranges roughly -0.4 (near) to -2.4 (far)
-  float depthFactor = smoothstep(-2.8, -0.2, mvPosition.z); // 0=far, 1=near
+  // At camera distance 0.5, mvPosition.z ranges roughly -0.1 (near) to -1.0 (far)
+  float depthFactor = smoothstep(-1.2, 0.0, mvPosition.z); // 0=far, 1=near
   v_depth = depthFactor;
   v_alpha *= 0.15 + depthFactor * 0.85; // far rays fade to 15% (stronger contrast)
 
-  // Point size: perspective + amplified depth emphasis
-  float baseSize = 1.5 + rayLen * 3.0 + u_energy * 1.5;
+  // Point size: perspective + amplified depth emphasis — rays are the main visual element
+  float baseSize = 3.0 + rayLen * 5.0 + u_energy * 2.0;
   float depthSize = 0.4 + depthFactor * 0.6; // far=40% size, near=100%
-  gl_PointSize = clamp(baseSize * depthSize * (80.0 / -mvPosition.z) * visible, 0.0, 36.0);
+  gl_PointSize = clamp(baseSize * depthSize * (60.0 / -mvPosition.z) * visible, 0.0, 64.0);
   gl_Position = projectionMatrix * mvPosition;
 }

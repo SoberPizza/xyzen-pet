@@ -90,8 +90,8 @@ void main() {
   vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
 
   // 3D depth cue: near particles brighter/larger, far particles dimmer/smaller
-  // At camera distance 1.4, stronger depth separation
-  float depthFactor = smoothstep(-2.8, -0.2, mvPosition.z); // 0=far, 1=near
+  // At camera distance 0.5, tighter depth range
+  float depthFactor = smoothstep(-1.2, 0.0, mvPosition.z); // 0=far, 1=near
   v_depth = depthFactor;
   v_alpha *= 0.15 + depthFactor * 0.85; // far particles fade to 15%
 

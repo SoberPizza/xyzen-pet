@@ -12,7 +12,8 @@ import type {
 import process from 'node:process'
 
 import { exec, spawn } from 'node:child_process'
-import { existsSync } from 'node:fs'
+import { existsSync, readdirSync } from 'node:fs'
+import { homedir } from 'node:os'
 import { join } from 'node:path'
 
 import { is } from '@electron-toolkit/utils'
@@ -78,6 +79,23 @@ function resolveScriptPath(scriptName: string): string {
   return candidates[0]
 }
 
+// Resolve a model filename to its absolute path in the HuggingFace cache.
+// HF cache layout: ~/.cache/huggingface/hub/models--{org}--{name}/snapshots/{hash}/{filename}
+function resolveHuggingFaceModelPath(repo: string, filename: string): string | null {
+  const cacheDir = join(homedir(), '.cache', 'huggingface', 'hub', `models--${repo.replace('/', '--')}`)
+  const snapshotsDir = join(cacheDir, 'snapshots')
+  if (!existsSync(snapshotsDir))
+    return null
+
+  const snapshots = readdirSync(snapshotsDir)
+  for (const snapshot of snapshots) {
+    const candidate = join(snapshotsDir, snapshot, filename)
+    if (existsSync(candidate))
+      return candidate
+  }
+  return null
+}
+
 function getFunasrServerScript(): string {
   return resolveScriptPath('funasr-server.py')
 }
@@ -86,9 +104,38 @@ function getCosyVoiceServerScript(): string {
   return resolveScriptPath('cosyvoice-server.py')
 }
 
+// Resolve the venv python created by postinstall (apps/stage-tamagotchi/.venv).
+// Falls back to system `python3` if the venv doesn't exist.
+function getVenvPython(): string {
+  const candidates = [
+    join(app.getAppPath(), '.venv', 'bin', 'python'),
+    join(app.getAppPath(), '..', '..', '.venv', 'bin', 'python'),
+  ]
+  for (const candidate of candidates) {
+    if (existsSync(candidate))
+      return candidate
+  }
+  return 'python3'
+}
+
+// NOTICE: The official CosyVoice (FunAudioLLM) is cloned into vendor/CosyVoice
+// during postinstall. We add it to PYTHONPATH so `from cosyvoice.cli.cosyvoice`
+// resolves correctly.
+function getCosyVoiceVendorDir(): string | null {
+  const candidates = [
+    join(app.getAppPath(), 'vendor', 'CosyVoice'),
+    join(app.getAppPath(), '..', '..', 'vendor', 'CosyVoice'),
+  ]
+  for (const candidate of candidates) {
+    if (existsSync(candidate))
+      return candidate
+  }
+  return null
+}
+
 const COSYVOICE_SERVICE: LocalAIServiceConfig = {
   id: 'cosyvoice',
-  command: 'python3',
+  get command() { return getVenvPython() },
   get args() {
     return [
       getCosyVoiceServerScript(),
@@ -102,11 +149,18 @@ const COSYVOICE_SERVICE: LocalAIServiceConfig = {
   readinessProbe: () => fetch('http://localhost:10097/health')
     .then(r => r.ok)
     .catch(() => false),
+  get env(): Record<string, string> {
+    const vendorDir = getCosyVoiceVendorDir()
+    if (!vendorDir)
+      return {}
+    const existing = process.env.PYTHONPATH || ''
+    return { PYTHONPATH: existing ? `${vendorDir}:${existing}` : vendorDir }
+  },
 }
 
 const FUNASR_SERVICE: LocalAIServiceConfig = {
   id: 'funasr',
-  command: 'python3',
+  get command() { return getVenvPython() },
   get args() {
     // NOTICE: --vad-model is empty to disable server-side FSMN VAD.
     // Client-side Silero VAD gates audio so only speech segments reach the server.
@@ -202,6 +256,9 @@ export function createLocalAIServiceManager(): LocalAIServiceManager {
 
     for (let i = 0; i < READINESS_PROBE_MAX_ATTEMPTS; i++) {
       if (entry.state !== 'starting')
+        return false
+      // Early exit if process already died (e.g. Python import failure, missing model)
+      if (entry.process && entry.process.exitCode !== null)
         return false
 
       const ready = await probe()
@@ -327,20 +384,15 @@ export function createLocalAIServiceManager(): LocalAIServiceManager {
   function checkPython(): Promise<LocalAICheckPythonResult> {
     return new Promise((resolve) => {
       // postinstall already ensures Python + funasr are available; this is a lightweight runtime check
-      const tryCandidate = (cmd: string, fallback?: () => void) => {
-        exec(`${cmd} -c "import funasr; print(funasr.__version__)"`, (error, stdout) => {
-          if (error) {
-            if (fallback)
-              fallback()
-            else
-              resolve({ pythonFound: false, funasrFound: false })
-          }
-          else {
-            resolve({ pythonFound: true, funasrFound: true, funasrVersion: stdout.trim() })
-          }
-        })
-      }
-      tryCandidate('python3', () => tryCandidate('python'))
+      const pythonCmd = getVenvPython()
+      exec(`${pythonCmd} -c "import funasr; print(funasr.__version__)"`, (error, stdout) => {
+        if (error) {
+          resolve({ pythonFound: false, funasrFound: false })
+        }
+        else {
+          resolve({ pythonFound: true, funasrFound: true, funasrVersion: stdout.trim() })
+        }
+      })
     })
   }
 
@@ -407,16 +459,22 @@ export function setupLocalAIServiceManager(): LocalAIServiceManager {
   })
 
   // Auto-start llama-server with default Qwen3-1.7B configuration
-  const defaultLlamaConfig = createLlamaServerConfig({
-    modelPath: 'Qwen3-1.7B-Q4_K_M.gguf',
-    port: 8080,
-    contextLength: 4096,
-    gpuLayers: 0,
-  })
-  manager.registerService(defaultLlamaConfig)
-  manager.start('llama-server').catch((err) => {
-    log.withError(err).warn('Auto-start of llama-server failed (non-fatal)')
-  })
+  const resolvedModelPath = resolveHuggingFaceModelPath('unsloth/Qwen3-1.7B-GGUF', 'Qwen3-1.7B-Q4_K_M.gguf')
+  if (resolvedModelPath) {
+    const defaultLlamaConfig = createLlamaServerConfig({
+      modelPath: resolvedModelPath,
+      port: 8080,
+      contextLength: 4096,
+      gpuLayers: 0,
+    })
+    manager.registerService(defaultLlamaConfig)
+    manager.start('llama-server').catch((err) => {
+      log.withError(err).warn('Auto-start of llama-server failed (non-fatal)')
+    })
+  }
+  else {
+    log.warn('Qwen3 GGUF model not found in HuggingFace cache, skipping llama-server auto-start')
+  }
 
   return manager
 }

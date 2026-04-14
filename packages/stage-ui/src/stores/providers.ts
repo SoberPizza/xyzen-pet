@@ -1494,6 +1494,7 @@ export const useProvidersStore = defineStore('providers', () => {
   const providerRuntimeState = ref<Record<string, ProviderRuntimeState>>({})
   const providerValidationInFlight = new Map<string, Promise<boolean>>()
   const providerRevalidationLoops = new Map<string, { resume: () => void }>()
+  const providerBackoffState = new Map<string, { consecutiveFailures: number }>()
 
   const configuredProviders = computed(() => {
     const result: Record<string, boolean> = {}
@@ -1597,18 +1598,39 @@ export const useProvidersStore = defineStore('providers', () => {
   // Initialize all providers
   Object.keys(providerMetadata).forEach(initializeProvider)
 
+  const BACKOFF_MAX_INTERVAL_MS = 120_000
+
   function startPeriodicRuntimeValidation() {
-    for (const [providerId, intervalMs] of providerValidationIntervalMsById.entries()) {
-      if (!providerMetadata[providerId] || intervalMs <= 0)
+    for (const [providerId, baseIntervalMs] of providerValidationIntervalMsById.entries()) {
+      if (!providerMetadata[providerId] || baseIntervalMs <= 0)
         continue
 
       if (providerRevalidationLoops.has(providerId)) {
         continue
       }
 
-      const loop = useIntervalFn(() => {
-        void validateProvider(providerId, { force: true })
-      }, intervalMs, { immediate: false, immediateCallback: false })
+      const dynamicInterval = ref(baseIntervalMs)
+
+      const loop = useIntervalFn(async () => {
+        const result = await validateProvider(providerId, { force: true })
+        const backoff = providerBackoffState.get(providerId) ?? { consecutiveFailures: 0 }
+
+        if (result) {
+          // Success: reset backoff
+          backoff.consecutiveFailures = 0
+          dynamicInterval.value = baseIntervalMs
+        }
+        else {
+          // Failure: exponential backoff
+          backoff.consecutiveFailures++
+          dynamicInterval.value = Math.min(
+            baseIntervalMs * (2 ** backoff.consecutiveFailures),
+            BACKOFF_MAX_INTERVAL_MS,
+          )
+        }
+
+        providerBackoffState.set(providerId, backoff)
+      }, dynamicInterval, { immediate: false, immediateCallback: false })
       loop.resume()
       providerRevalidationLoops.set(providerId, loop)
     }

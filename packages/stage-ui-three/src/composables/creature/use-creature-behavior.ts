@@ -10,7 +10,7 @@ import type { Ref } from 'vue'
 import type { CreatureAnimParams, OrbActivity, OrbEmotion } from './types'
 
 import { Color } from 'three'
-import { computed, ref, watch } from 'vue'
+import { computed, ref, triggerRef, watch } from 'vue'
 
 const EMOTION_COLORS: Record<OrbEmotion, { primary: string, secondary: string }> = {
   neutral: { primary: '#00DDCC', secondary: '#0088AA' },
@@ -282,11 +282,6 @@ export function useCreatureBehavior(options: CreatureBehaviorOptions) {
     const audioInfluence = Math.max(audioLevel.value, speakingLevel.value)
     p.earAngle = Math.min(1, p.earAngle + actMod.earAngleAdd + audioInfluence * actMod.audioPulseStrength * 0.15)
 
-    // Apply multipliers
-    p.breathSpeed *= actMod.breathSpeedMul
-    p.tailWagSpeed *= actMod.tailWagSpeedMul
-    p.glowIntensity *= actMod.glowIntensityMul
-
     // Interaction pulse adds bounce and glow
     if (interactionPulse.value > 0.01) {
       p.bodyBounce += interactionPulse.value * 0.15
@@ -297,9 +292,24 @@ export function useCreatureBehavior(options: CreatureBehaviorOptions) {
     // Ear twitch: random periodic trigger
     const twitchCycle = Math.sin(elapsed * 7.3) * Math.sin(elapsed * 3.1)
     p.earTwitch = p.earTwitch * (twitchCycle > 0.7 ? 1.0 : 0.0)
+
+    // Force Vue to detect in-place mutations on Color objects and params
+    triggerRef(currentColor1)
+    triggerRef(currentColor2)
+    triggerRef(currentParams)
   }
 
-  const animParams = computed(() => currentParams.value)
+  // Apply activity multipliers at read time to avoid compounding every frame
+  const animParams = computed(() => {
+    const p = currentParams.value
+    const actMod = ACTIVITY_MODIFIERS[activity.value]
+    return {
+      ...p,
+      breathSpeed: p.breathSpeed * actMod.breathSpeedMul,
+      tailWagSpeed: p.tailWagSpeed * actMod.tailWagSpeedMul,
+      glowIntensity: p.glowIntensity * actMod.glowIntensityMul,
+    }
+  })
 
   const colors = computed(() => ({
     color1: currentColor1.value,

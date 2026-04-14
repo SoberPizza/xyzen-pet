@@ -40,8 +40,8 @@ void main() {
   float colorShift = smoothstep(0.0, 0.5, dist) + (1.0 - v_depth) * 0.25;
   vec3 color = mix(hotColor, coolColor, clamp(colorShift, 0.0, 1.0));
 
-  // Combine - favor the sharp core line over soft glow
-  float intensity = (glow * 0.3 + coreLine * 0.8) * shimmer;
+  // Combine - favor the sharp core line over soft glow, brighter overall
+  float intensity = (glow * 0.5 + coreLine * 1.0) * shimmer;
   color *= intensity * u_coreBrightness;
 
   float alpha = intensity * v_alpha;

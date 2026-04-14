@@ -983,6 +983,9 @@ pages:
         env-ready: 'Environment ready (funasr {version})'
         env-not-ready: Environment not ready — run pnpm install to set up FunASR
         checking-python: Checking Python environment...
+      cosyvoice-local-server:
+        title: CosyVoice (Local)
+        description: CosyVoice-300M-SFT local TTS server with multi-speaker support
       official:
         title: Official Provider
         description: Official AI provider by AIRI.

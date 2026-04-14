@@ -19,7 +19,7 @@ uniform vec3 u_color2;
 varying vec2 vUv;
 
 #define PI 3.14159265359
-#define NUM_SPIKES 6
+#define NUM_SPIKES 2
 
 // Simple hash for shimmer noise
 float hash(vec2 p) {
@@ -40,8 +40,8 @@ void main() {
   // 1. Bright central point - steep but visible at ~15% of billboard radius
   float coreIntensity = exp(-r * r * 200.0) * 1.2;
 
-  // Secondary glow halo — u_coreGlowSize controls spread (lower = wider glow)
-  float coreGlow = exp(-r * r * u_coreGlowSize) * 0.3;
+  // Very thin glow halo — u_coreGlowSize controls spread (higher = tighter)
+  float coreGlow = exp(-r * r * u_coreGlowSize) * 0.12;
 
   // 2. Diffraction spikes - very thin sharp lines radiating from center
   float angle = atan(uv.y, uv.x);
@@ -59,7 +59,7 @@ void main() {
     // Very thin spike profile
     float spikeProfile = exp(-angDist * angDist * spikeSharpness);
     // Radial falloff - spikes extend visibly but stay narrow
-    float radialFade = exp(-r * effectiveSpikeLength * 3.0);
+    float radialFade = exp(-r * effectiveSpikeLength * 5.0);
     spikes += spikeProfile * radialFade;
   }
   spikes *= 0.4 * u_energy;

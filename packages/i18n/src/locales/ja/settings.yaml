@@ -937,6 +937,9 @@ pages:
         env-ready: '環境準備完了（funasr {version}）'
         env-not-ready: 環境が未準備です — pnpm install を実行して FunASR をセットアップしてください
         checking-python: Python 環境を確認中...
+      cosyvoice-local-server:
+        title: CosyVoice（ローカル）
+        description: CosyVoice-300M-SFT ローカル音声合成サーバー（多話者対応）
       official:
         title: 公式プロバイダー
         description: AIRIが提供する公式AIプロバイダー。

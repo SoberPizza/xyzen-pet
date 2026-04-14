@@ -3,8 +3,7 @@
  * Holographic Sparkler Spirit scene orchestrator.
  *
  * Composes: SparklerCore (bright center + diffraction spikes),
- * SparkRays (radiating spark lines), SparkParticles (flying sparks with gravity),
- * camera, and bloom post-processing.
+ * SparkRays (radiating spark lines), camera, and bloom post-processing.
  *
  * Optimized for Pepper's Ghost prism projection: high contrast on black background.
  */
@@ -17,7 +16,6 @@ import { BloomPmndrs, EffectComposerPmndrs } from '@tresjs/post-processing'
 import { computed, onBeforeUnmount, onMounted, ref, toRefs } from 'vue'
 
 import SparklerCore from './SparklerCore.vue'
-import SparkParticles from './SparkParticles.vue'
 import SparkRays from './SparkRays.vue'
 
 import { useOrbAudioReactive } from '../../composables/orb/use-orb-audio-reactive'
@@ -40,7 +38,7 @@ const props = withDefaults(defineProps<{
   currentEmotion: 'neutral',
   rawAudioLevel: 0,
   rawSpeakingLevel: 0,
-  cameraDistance: 1.4,
+  cameraDistance: 0.5,
   enableControls: false,
   pepperGhost: true,
 })
@@ -149,7 +147,8 @@ defineExpose({
       />
 
       <!-- Rotating group: slow Y-axis rotation creates real 3D parallax through prism -->
-      <TresGroup :rotation-y="groupRotationY">
+      <!-- Z-offset per emotion moves the orb closer/farther from camera for 3D depth feel -->
+      <TresGroup :rotation-y="groupRotationY" :position-z="uniforms.u_coreOffsetZ">
         <!-- Sparkler core: bright center point with diffraction spikes -->
         <SparklerCore
           :energy="uniforms.u_energy"
@@ -184,23 +183,6 @@ defineExpose({
           :ray-max-length="uniforms.u_rayMaxLength"
           :ray-density="uniforms.u_rayDensity"
           :flicker-speed="uniforms.u_flickerSpeed"
-          :pulse-rate="uniforms.u_pulseRate"
-        />
-
-        <!-- Spark particles: flying sparks with gravity arc -->
-        <SparkParticles
-          :energy="uniforms.u_energy"
-          :orbit-speed="uniforms.u_orbitSpeed"
-          :core-offset-x="uniforms.u_coreOffsetX"
-          :core-offset-y="uniforms.u_coreOffsetY"
-          :audio-level="uniforms.u_audioLevel"
-          :speaking-level="uniforms.u_speakingLevel"
-          :color1="`#${uniforms.u_color1.getHexString()}`"
-          :color2="`#${uniforms.u_color2.getHexString()}`"
-          :gravity="uniforms.u_gravity"
-          :particle-spread="uniforms.u_particleSpread"
-          :ray-max-length="uniforms.u_rayMaxLength"
-          :tangential-speed="uniforms.u_tangentialSpeed"
           :pulse-rate="uniforms.u_pulseRate"
         />
       </TresGroup>

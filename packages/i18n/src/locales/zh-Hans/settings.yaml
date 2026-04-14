@@ -937,6 +937,9 @@ pages:
         env-ready: '环境就绪（funasr {version}）'
         env-not-ready: 环境未就绪 — 请运行 pnpm install 以配置 FunASR
         checking-python: 正在检测 Python 环境...
+      cosyvoice-local-server:
+        title: CosyVoice（本地）
+        description: CosyVoice-300M-SFT 本地语音合成服务器，支持多说话人
       official:
         title: AIRI官方提供商
         description: 登录后即可使用的服务来源

@@ -41,7 +41,7 @@ const props = withDefaults(defineProps<{
   currentEmotion: 'neutral',
   rawAudioLevel: 0,
   rawSpeakingLevel: 0,
-  cameraDistance: 1.4,
+  cameraDistance: 0.5,
   enableControls: false,
   pepperGhost: true,
 })

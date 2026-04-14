@@ -70,8 +70,8 @@ function createGeometry(): BufferGeometry {
     // Uniform spherical distribution for 3D radial rays
     angleThetas[i] = Math.random() * Math.PI * 2
     anglePhis[i] = Math.acos(2.0 * Math.random() - 1.0)
-    speeds[i] = 0.4 + Math.random() * 1.0
-    maxLengths[i] = 0.2 + Math.random() * 0.4
+    speeds[i] = 0.2 + Math.random() * 0.6
+    maxLengths[i] = 0.3 + Math.random() * 0.6
   }
 
   geo.setAttribute('position', new BufferAttribute(positions, 3))

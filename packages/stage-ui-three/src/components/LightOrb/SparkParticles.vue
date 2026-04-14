@@ -71,8 +71,8 @@ function createGeometry(): BufferGeometry {
     // Uniform spherical distribution
     thetas[i] = Math.random() * Math.PI * 2
     phis[i] = Math.acos(2.0 * Math.random() - 1.0)
-    speeds[i] = 0.3 + Math.random() * 1.2
-    lifetimes[i] = 0.8 + Math.random() * 1.5
+    speeds[i] = 0.15 + Math.random() * 0.6
+    lifetimes[i] = 1.2 + Math.random() * 2.5
     // Variable sizes: most small, some large bright sparks
     sizes[i] = Math.random() < 0.15
       ? 4.0 + Math.random() * 4.0 // 15% large sparks
