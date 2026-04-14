@@ -1,0 +1,15 @@
+{
+  "name": "@proj-airi/local-ai-python",
+  "type": "module",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Local AI Python services (FunASR, CosyVoice, llama.cpp)",
+  "scripts": {
+    "postinstall": "tsx setup.ts",
+    "dev:funasr": ".venv/bin/python servers/funasr-server.py --model iic/SenseVoiceSmall --vad-model '' --device cpu --port 10095",
+    "dev:cosyvoice": ".venv/bin/python servers/cosyvoice-server.py --port 10097 --device cpu"
+  },
+  "devDependencies": {
+    "tsx": "catalog:"
+  }
+}

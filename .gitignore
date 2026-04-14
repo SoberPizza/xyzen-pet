@@ -127,6 +127,9 @@ plugins-development
 apps/stage-pocket/ios/buildServer.json
 apps/stage-pocket/airi-pocket.jks
 apps/stage-tamagotchi/electron.vite.config.*.mjs
+services/local-ai-python/.venv/
+services/local-ai-python/vendor/
+# Legacy locations (safe to remove once old .venv/vendor are cleaned up)
 apps/stage-tamagotchi/vendor/
 apps/stage-tamagotchi/.venv/
 .docs/superpowers

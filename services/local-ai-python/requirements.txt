@@ -1,0 +1,32 @@
+# Core ML dependencies
+torch
+torchaudio
+
+# FunASR (speech recognition)
+funasr
+modelscope
+websockets
+
+# CosyVoice TTS dependencies
+# NOTICE: The PyPI "cosyvoice" package is broken. The official FunAudioLLM/CosyVoice
+# repo is cloned into vendor/CosyVoice during setup. These are its runtime deps.
+conformer
+onnxruntime
+soundfile
+transformers
+HyperPyYAML
+openai-whisper
+numpy<2
+omegaconf
+hydra-core
+inflect
+librosa
+pydantic
+pyworld
+x-transformers
+wetext
+wget
+protobuf
+
+# HuggingFace Hub (for downloading GGUF models)
+huggingface_hub

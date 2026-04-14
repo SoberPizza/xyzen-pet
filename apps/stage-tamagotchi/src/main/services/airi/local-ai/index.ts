@@ -56,16 +56,29 @@ const READINESS_PROBE_MAX_ATTEMPTS = 60
 // NOTICE: app.getAppPath() behavior varies between dev and production:
 // - dev (electron-vite): usually returns project root (where package.json is)
 // - production: returns the asar/app directory
-// We try multiple candidate paths and pick the first that exists.
+// Python server scripts now live in services/local-ai-python/servers/ at the monorepo root.
+// We walk up from appPath to find the monorepo root (contains pnpm-workspace.yaml).
+function findMonorepoRoot(): string {
+  let dir = app.getAppPath()
+  for (let i = 0; i < 5; i++) {
+    if (existsSync(join(dir, 'pnpm-workspace.yaml')))
+      return dir
+    dir = join(dir, '..')
+  }
+  // Fallback: assume appPath is two levels deep (apps/stage-tamagotchi)
+  return join(app.getAppPath(), '..', '..')
+}
+
 function resolveScriptPath(scriptName: string): string {
+  const monorepoRoot = findMonorepoRoot()
   const candidates = [
+    join(monorepoRoot, 'services', 'local-ai-python', 'servers', scriptName),
+    // Legacy fallback for production builds that may bundle scripts locally
     join(app.getAppPath(), 'scripts', scriptName),
-    // electron-vite dev may return out/main as appPath
-    join(app.getAppPath(), '..', '..', 'scripts', scriptName),
   ]
 
   const log = useLogg('main/local-ai').useGlobalConfig()
-  log.withFields({ appPath: app.getAppPath(), isDev: is.dev, candidates }).log(`Resolving ${scriptName} path`)
+  log.withFields({ appPath: app.getAppPath(), isDev: is.dev, monorepoRoot, candidates }).log(`Resolving ${scriptName} path`)
 
   for (const candidate of candidates) {
     if (existsSync(candidate)) {
@@ -104,12 +117,14 @@ function getCosyVoiceServerScript(): string {
   return resolveScriptPath('cosyvoice-server.py')
 }
 
-// Resolve the venv python created by postinstall (apps/stage-tamagotchi/.venv).
+// Resolve the venv python created by services/local-ai-python postinstall.
 // Falls back to system `python3` if the venv doesn't exist.
 function getVenvPython(): string {
+  const monorepoRoot = findMonorepoRoot()
   const candidates = [
+    join(monorepoRoot, 'services', 'local-ai-python', '.venv', 'bin', 'python'),
+    // Legacy fallback
     join(app.getAppPath(), '.venv', 'bin', 'python'),
-    join(app.getAppPath(), '..', '..', '.venv', 'bin', 'python'),
   ]
   for (const candidate of candidates) {
     if (existsSync(candidate))
@@ -118,13 +133,15 @@ function getVenvPython(): string {
   return 'python3'
 }
 
-// NOTICE: The official CosyVoice (FunAudioLLM) is cloned into vendor/CosyVoice
-// during postinstall. We add it to PYTHONPATH so `from cosyvoice.cli.cosyvoice`
-// resolves correctly.
+// NOTICE: The official CosyVoice (FunAudioLLM) is cloned into
+// services/local-ai-python/vendor/CosyVoice during setup. We add it to
+// PYTHONPATH so `from cosyvoice.cli.cosyvoice` resolves correctly.
 function getCosyVoiceVendorDir(): string | null {
+  const monorepoRoot = findMonorepoRoot()
   const candidates = [
+    join(monorepoRoot, 'services', 'local-ai-python', 'vendor', 'CosyVoice'),
+    // Legacy fallback
     join(app.getAppPath(), 'vendor', 'CosyVoice'),
-    join(app.getAppPath(), '..', '..', 'vendor', 'CosyVoice'),
   ]
   for (const candidate of candidates) {
     if (existsSync(candidate))
