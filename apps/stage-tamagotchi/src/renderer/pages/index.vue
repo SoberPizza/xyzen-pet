@@ -468,6 +468,17 @@ watch(stream, async (currentStream) => {
   await startAudioInteraction()
 })
 
+// NOTICE: When the page loads with mic already enabled (persisted state), startAudioInteraction()
+// may run before the MediaStream is available, causing shouldUseStreamInput to be false at check
+// time. The stream watcher can also miss it if the stream arrives while audioInteractionStarting
+// is true. This watcher ensures we retry when conditions finally become met.
+watch(shouldUseStreamInput, async (canStream) => {
+  if (canStream && enabled.value && !audioInteractionStarting.value) {
+    console.info('[Main Page] shouldUseStreamInput became true, starting audio interaction')
+    await startAudioInteraction()
+  }
+})
+
 watch([stream, () => vadLoaded.value], async ([s, loaded]) => {
   if (enabled.value && loaded && s) {
     try {

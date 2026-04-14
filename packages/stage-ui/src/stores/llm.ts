@@ -54,6 +54,8 @@ function sanitizeMessages(messages: unknown[]): Message[] {
 }
 
 function streamOptionsToolsCompatibilityOk(model: string, chatProvider: ChatProvider, _: Message[], options?: StreamOptions): boolean {
+  if (options?.supportsTools === false)
+    return false
   if (options?.supportsTools)
     return true
   const key = `${chatProvider.chat(model).baseURL}-${model}`

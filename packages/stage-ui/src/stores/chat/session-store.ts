@@ -368,6 +368,28 @@ export const useChatSessionStore = defineStore('chat-session', () => {
     }
   }
 
+  // NOTICE: When the system prompt changes (e.g. locale switch or card edit), update the
+  // system message in the active session so the LLM sees the new instructions immediately
+  // without requiring the user to clear chat and start a new session.
+  watch(systemPrompt, (newPrompt) => {
+    if (!activeSessionId.value || !newPrompt)
+      return
+
+    const msgs = sessionMessages.value[activeSessionId.value]
+    if (!msgs || msgs.length === 0)
+      return
+
+    const firstMsg = msgs[0]
+    if (firstMsg.role !== 'system')
+      return
+
+    const expected = generateInitialMessageFromPrompt(newPrompt)
+    if (firstMsg.content !== expected.content) {
+      msgs[0] = { ...firstMsg, content: expected.content }
+      persistSessionMessages(activeSessionId.value)
+    }
+  })
+
   function cleanupMessages(sessionId = activeSessionId.value) {
     ensureGeneration(sessionId)
     sessionGenerations.value[sessionId] += 1

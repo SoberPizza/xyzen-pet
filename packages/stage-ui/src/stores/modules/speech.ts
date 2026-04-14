@@ -27,7 +27,7 @@ export const useSpeechStore = defineStore('speech', () => {
   // State
   const activeSpeechProvider = useLocalStorageManualReset<string>('settings/speech/active-provider', 'cosyvoice-local-server')
   const activeSpeechModel = useLocalStorageManualReset<string>('settings/speech/active-model', 'CosyVoice-300M-SFT')
-  const activeSpeechVoiceId = useLocalStorageManualReset<string>('settings/speech/voice', '')
+  const activeSpeechVoiceId = useLocalStorageManualReset<string>('settings/speech/voice', '中文女')
   const activeSpeechVoice = refManualReset<VoiceInfo | undefined>(undefined)
 
   const pitch = useLocalStorageManualReset<number>('settings/speech/pitch', 0)
@@ -158,8 +158,18 @@ export const useSpeechStore = defineStore('speech', () => {
 
   onMounted(() => {
     loadVoicesForProvider(activeSpeechProvider.value).then(() => {
+      const voices = availableVoices.value[activeSpeechProvider.value] ?? []
       if (activeSpeechVoiceId.value) {
-        activeSpeechVoice.value = availableVoices.value[activeSpeechProvider.value]?.find(voice => voice.id === activeSpeechVoiceId.value)
+        activeSpeechVoice.value = voices.find(voice => voice.id === activeSpeechVoiceId.value)
+      }
+
+      // NOTICE: Auto-select a voice when none is configured to avoid silent TTS failures.
+      // The TTS pipeline returns null when activeSpeechVoice is undefined, silently skipping
+      // speech synthesis with no user-visible error.
+      if (!activeSpeechVoice.value && voices.length > 0) {
+        const fallback = voices.find(v => v.id === '中文女') ?? voices[0]
+        activeSpeechVoiceId.value = fallback.id
+        activeSpeechVoice.value = fallback
       }
     })
   })
@@ -186,6 +196,15 @@ export const useSpeechStore = defineStore('speech', () => {
         if (foundVoice || !activeSpeechVoice.value) {
           activeSpeechVoice.value = foundVoice
         }
+      }
+    }
+    else {
+      // Auto-select when no voice is configured but voices are available
+      const providerVoices = voices[activeSpeechProvider.value] ?? []
+      if (providerVoices.length > 0) {
+        const fallback = providerVoices.find(v => v.id === '中文女') ?? providerVoices[0]
+        activeSpeechVoiceId.value = fallback.id
+        activeSpeechVoice.value = fallback
       }
     }
   }, {

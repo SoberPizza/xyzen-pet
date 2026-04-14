@@ -286,9 +286,16 @@ export const useAiriCardStore = defineStore('airi-card', () => {
       if (!card)
         return ''
 
+      // NOTICE: The default card's description was baked from i18n at first launch and persisted.
+      // Always use the current locale's system prompt so language switches take effect immediately
+      // without requiring the user to manually regenerate the card.
+      const description = activeCardId.value === 'default'
+        ? SystemPromptV2(t('base.prompt.prefix'), t('base.prompt.suffix')).content
+        : card.description
+
       const components = [
         card.systemPrompt,
-        card.description,
+        description,
         card.personality,
       ].filter(Boolean)
 

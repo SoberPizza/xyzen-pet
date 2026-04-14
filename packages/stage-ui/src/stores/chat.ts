@@ -13,6 +13,7 @@ import { computed, ref, toRaw } from 'vue'
 import { useAnalytics } from '../composables'
 import { useLlmmarkerParser } from '../composables/llm-marker-parser'
 import { categorizeResponse, createStreamingCategorizer } from '../composables/response-categoriser'
+import { getDefinedProvider } from '../libs/providers/providers/registry'
 import { formatContextPromptText } from './chat/context-prompt'
 import { createDatetimeContext, createMinecraftContext } from './chat/context-providers'
 import { useChatContextStore } from './chat/context-store'
@@ -228,6 +229,8 @@ export const useChatOrchestratorStore = defineStore('chat-orchestrator', () => {
           const speechOnly = categorizer.filterToSpeech(literal, streamPosition)
           streamPosition += literal.length
 
+          console.debug('[Chat] onLiteral', { literalLen: literal.length, speechOnlyLen: speechOnly.length, speechPreview: speechOnly.slice(0, 40), streamPosition })
+
           if (speechOnly.trim()) {
             buildingMessage.content += speechOnly
 
@@ -360,9 +363,13 @@ export const useChatOrchestratorStore = defineStore('chat-orchestrator', () => {
       if (shouldAbort())
         return
 
+      const providerDef = getDefinedProvider(activeProvider.value)
+      const providerSupportsTools = providerDef?.supportsTools
+
       await llmStore.stream(options.model, options.chatProvider, newMessages as Message[], {
         headers,
         tools: options.tools,
+        supportsTools: providerSupportsTools,
         // NOTICE: xsai stream may emit `finish` before tool steps continue, so keep waiting until
         // the final non-tool finish to avoid ending the chat turn with no assistant reply.
         waitForTools: true,
@@ -405,6 +412,8 @@ export const useChatOrchestratorStore = defineStore('chat-orchestrator', () => {
       })
 
       await parser.end()
+
+      console.info('[Chat] Stream complete', { fullTextLength: fullText.length, fullTextPreview: fullText.slice(0, 100), speechContent: buildingMessage.content.slice(0, 100), sliceCount: buildingMessage.slices.length })
 
       if (!isStaleGeneration() && buildingMessage.slices.length > 0) {
         chatSession.appendSessionMessage(sessionId, toRaw(buildingMessage))

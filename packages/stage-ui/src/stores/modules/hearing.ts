@@ -586,30 +586,39 @@ export const useHearingSpeechInputPipeline = defineStore('modules:hearing:speech
       }
 
       const abortController = new AbortController()
-      let idleTimer: ReturnType<typeof setTimeout> | undefined
-      const bumpIdle = () => {
-        if (idleTimer)
-          clearTimeout(idleTimer)
-        idleTimer = setTimeout(async () => {
-          await stopStreamingTranscription(false, providerId)
-        }, idleTimeout)
-      }
 
       // When an external audio stream is provided (e.g. VAD-gated), skip creating
       // a separate AudioContext+Worklet pipeline — use the external stream directly.
       const useExternalStream = !!options?.externalAudioStream
+
+      // NOTICE: The idle timer is only meaningful when the pipeline owns the audio stream
+      // and can detect activity via the worklet's onmessage. External (VAD-gated) streams
+      // only enqueue audio during speech, so the idle timer would fire during normal silence
+      // and tear down the WebSocket before the user speaks. The page manages the session
+      // lifecycle for external streams (e.g. stopAudioInteraction on unmount/mic toggle).
+      let idleTimer: ReturnType<typeof setTimeout> | undefined
+      const bumpIdle = useExternalStream
+        ? undefined
+        : () => {
+            if (idleTimer)
+              clearTimeout(idleTimer)
+            idleTimer = setTimeout(async () => {
+              await stopStreamingTranscription(false, providerId)
+            }, idleTimeout)
+          }
+
       const session = useExternalStream
         ? null
         : await createAudioStreamFromMediaStream(
             stream,
             options?.sampleRate ?? DEFAULT_SAMPLE_RATE,
-            () => bumpIdle(),
+            () => bumpIdle!(),
           )
 
       if (session && session.audioContext.state === 'suspended')
         await session.audioContext.resume()
 
-      bumpIdle()
+      bumpIdle?.()
 
       const inputAudioStream = useExternalStream
         ? options!.externalAudioStream!

@@ -190,6 +190,13 @@ export interface ProviderDefinition<TConfig extends any = any> {
    * providers where skipping that check is not meaningful or has not been
    * verified yet.
    */
+  /**
+   * When false, the provider does not support tool calling (e.g. small local models).
+   * Tools will not be sent to the LLM, preventing the model from outputting
+   * raw tool descriptions instead of normal conversation.
+   * Defaults to true (tools enabled) when not specified.
+   */
+  supportsTools?: boolean
   disableChatPingCheckUI?: boolean
   business?: (contextOptions: { t: ComposerTranslation }) => {
     troubleshooting?: {

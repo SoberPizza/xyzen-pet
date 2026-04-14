@@ -244,20 +244,28 @@ const playbackManager = createPlaybackManager<AudioBuffer>({
 
 const speechPipeline = createSpeechPipeline<AudioBuffer>({
   tts: async (request, signal) => {
-    if (signal.aborted)
-      return null
+    console.debug('[Stage TTS] tts() called', { text: request.text?.slice(0, 50), special: request.special, aborted: signal.aborted })
 
-    if (!activeSpeechProvider.value)
-      return null
-
-    const provider = await providersStore.getProviderInstance(activeSpeechProvider.value) as SpeechProviderWithExtraOptions<string, UnElevenLabsOptions>
-    if (!provider) {
-      console.error('Failed to initialize speech provider')
+    if (signal.aborted) {
+      console.debug('[Stage TTS] Skipped: signal aborted')
       return null
     }
 
-    if (!request.text && !request.special)
+    if (!activeSpeechProvider.value) {
+      console.warn('[Stage TTS] Skipped: no activeSpeechProvider')
       return null
+    }
+
+    const provider = await providersStore.getProviderInstance(activeSpeechProvider.value) as SpeechProviderWithExtraOptions<string, UnElevenLabsOptions>
+    if (!provider) {
+      console.error('[Stage TTS] Failed to initialize speech provider')
+      return null
+    }
+
+    if (!request.text && !request.special) {
+      console.debug('[Stage TTS] Skipped: no text and no special')
+      return null
+    }
 
     const providerConfig = providersStore.getProviderConfig(activeSpeechProvider.value)
 
@@ -265,6 +273,24 @@ const speechPipeline = createSpeechPipeline<AudioBuffer>({
     // since these are manually configured in provider settings
     let model = activeSpeechModel.value
     let voice = activeSpeechVoice.value
+
+    // NOTICE: activeSpeechVoice (the full VoiceInfo object) is resolved asynchronously after
+    // voice listing completes. If TTS fires before that (e.g. fast LLM response on app start),
+    // fall back to constructing a minimal VoiceInfo from the persisted voice ID so TTS isn't
+    // silently skipped.
+    if (!voice && speechStore.activeSpeechVoiceId) {
+      const fallbackVoiceId = speechStore.activeSpeechVoiceId
+      voice = {
+        id: fallbackVoiceId,
+        name: fallbackVoiceId,
+        description: '',
+        previewURL: '',
+        languages: [{ code: 'zh-CN', title: 'Chinese' }],
+        provider: activeSpeechProvider.value,
+        gender: 'neutral',
+      }
+      console.info('[Stage TTS] Using fallback voice from voiceId', { voiceId: voice.id })
+    }
 
     if (activeSpeechProvider.value === 'openai-compatible-audio-speech') {
       // Always prefer provider config for OpenAI Compatible (user configured it there)
@@ -303,12 +329,16 @@ const speechPipeline = createSpeechPipeline<AudioBuffer>({
       }
     }
 
-    if (!model || !voice)
+    if (!model || !voice) {
+      console.warn('[Stage TTS] Skipped: missing model or voice', { model, voice: voice?.id })
       return null
+    }
 
     const input = ssmlEnabled.value
       ? speechStore.generateSSML(request.text, voice, { ...providerConfig, pitch: pitch.value })
       : request.text
+
+    console.info('[Stage TTS] Calling generateSpeech', { provider: activeSpeechProvider.value, model, voice: voice.id, inputLength: input?.length })
 
     try {
       const res = await generateSpeech({
@@ -317,20 +347,28 @@ const speechPipeline = createSpeechPipeline<AudioBuffer>({
         voice: voice.id,
       })
 
-      if (signal.aborted || !res || res.byteLength === 0)
+      if (signal.aborted || !res || res.byteLength === 0) {
+        console.warn('[Stage TTS] generateSpeech returned empty or aborted', { aborted: signal.aborted, size: res?.byteLength })
         return null
+      }
 
+      console.info('[Stage TTS] Audio generated', { byteLength: res.byteLength })
       const audioBuffer = await audioContext.decodeAudioData(res)
       return audioBuffer
     }
-    catch {
+    catch (err) {
+      console.error('[Stage TTS] generateSpeech failed', err)
       return null
     }
   },
   playback: playbackManager,
 })
 
-void speechRuntimeStore.registerHost(speechPipeline)
+void speechRuntimeStore.registerHost(speechPipeline).then(() => {
+  console.info('[Stage] Speech pipeline host registered successfully')
+}).catch((err) => {
+  console.error('[Stage] Speech pipeline host registration failed', err)
+})
 
 speechPipeline.on('onSpecial', (segment) => {
   if (segment.special)
@@ -450,6 +488,7 @@ function setupAnalyser() {
 let currentChatIntent: ReturnType<typeof speechRuntimeStore.openIntent> | null = null
 
 chatHookCleanups.push(onBeforeMessageComposed(async () => {
+  console.info('[Stage] onBeforeMessageComposed → opening speech intent')
   playbackManager.stopAll('new-message')
 
   setupAnalyser()
@@ -481,6 +520,7 @@ chatHookCleanups.push(onBeforeMessageComposed(async () => {
     priority: 'normal',
     behavior: 'queue',
   })
+  console.info('[Stage] Speech intent opened', { intentId: currentChatIntent.intentId, isHost: speechRuntimeStore.isHost() })
 }))
 
 chatHookCleanups.push(onBeforeSend(async () => {
@@ -488,6 +528,7 @@ chatHookCleanups.push(onBeforeSend(async () => {
 }))
 
 chatHookCleanups.push(onTokenLiteral(async (literal) => {
+  console.debug('[Stage] onTokenLiteral', { length: literal.length, preview: literal.slice(0, 40), hasIntent: !!currentChatIntent })
   currentChatIntent?.writeLiteral(literal)
 }))
 

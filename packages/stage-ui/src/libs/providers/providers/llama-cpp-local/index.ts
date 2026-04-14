@@ -35,6 +35,10 @@ export const providerLlamaCppLocal = defineProvider<LlamaCppLocalConfig>({
   description: 'llama.cpp local server',
   descriptionLocalize: ({ t }) => t('settings.pages.providers.provider.llama-cpp-local.description'),
   tasks: ['chat'],
+  // NOTICE: Small local models (e.g. Qwen3-1.7B) cannot handle tool calling —
+  // they output raw tool descriptions as conversation text instead of issuing
+  // structured tool calls. Disable tools by default for llama.cpp local server.
+  supportsTools: false,
   icon: 'i-carbon:machine-learning-model',
   iconColor: 'i-carbon:machine-learning-model',
 
