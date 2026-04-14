@@ -27,3 +27,10 @@ x-transformers
 wetext
 wget
 protobuf
+diffusers
+lightning
+gdown
+pyarrow
+grpcio
+grpcio-tools
+matplotlib

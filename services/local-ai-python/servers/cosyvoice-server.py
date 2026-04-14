@@ -34,7 +34,10 @@ cosyvoice = CosyVoice('iic/CosyVoice-300M-SFT', load_jit=False, fp16=False)
 print('[cosyvoice-server] Model loaded', flush=True)
 
 # SFT preset voices from CosyVoice-300M-SFT
-AVAILABLE_VOICES = list(cosyvoice.list_avaliable_spks())
+# NOTICE: Upstream CosyVoice fixed the typo from list_avaliable_spks → list_available_spks.
+# Support both for compatibility with older checkouts.
+_list_spks = getattr(cosyvoice, 'list_available_spks', None) or getattr(cosyvoice, 'list_avaliable_spks')
+AVAILABLE_VOICES = list(_list_spks())
 print(f'[cosyvoice-server] Available voices: {AVAILABLE_VOICES}', flush=True)
 
 

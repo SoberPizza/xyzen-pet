@@ -3,6 +3,7 @@ import type {
   LocalAILlamaServerConfig,
 } from '@proj-airi/stage-shared/local-ai'
 
+import type { ModelProfile } from './model-profiles'
 import type { LocalAIServiceConfig } from './service-manager'
 
 import { exec } from 'node:child_process'
@@ -70,16 +71,16 @@ export function checkLlama(): Promise<LocalAICheckLlamaResult> {
   })
 }
 
-/** Resolve default Qwen3 model from HF cache and return a llama-server config, or null if not found. */
-export function getDefaultLlamaConfig(): LocalAIServiceConfig | null {
-  const resolvedModelPath = resolveHuggingFaceModelPath('unsloth/Qwen3-1.7B-GGUF', 'Qwen3-1.7B-Q4_K_M.gguf')
+/** Resolve model from HF cache using the given profile and return a llama-server config, or null if not found. */
+export function getDefaultLlamaConfig(profile: ModelProfile): LocalAIServiceConfig | null {
+  const resolvedModelPath = resolveHuggingFaceModelPath(profile.llama.repo, profile.llama.filename)
   if (!resolvedModelPath)
     return null
 
   return createLlamaServerConfig({
     modelPath: resolvedModelPath,
     port: 8080,
-    contextLength: 4096,
-    gpuLayers: 0,
+    contextLength: profile.llama.contextLength,
+    gpuLayers: profile.llama.gpuLayers,
   })
 }

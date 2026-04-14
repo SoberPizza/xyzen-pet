@@ -131,7 +131,7 @@ app.whenReady().then(async () => {
   })
 
   const localAIManager = injeca.provide('modules:local-ai-manager', {
-    build: () => setupLocalAIServiceManager(),
+    build: async () => setupLocalAIServiceManager(),
   })
 
   const pluginHost = injeca.provide('modules:plugin-host', {

@@ -204,10 +204,12 @@ function getCosyVoiceVendorDir(): string {
 async function cloneCosyVoice(python: string): Promise<void> {
   const vendorDir = getCosyVoiceVendorDir()
 
+  const matchaTTSDir = join(vendorDir, 'third_party', 'Matcha-TTS')
+
   // Check if already cloned and functional
   try {
     await exec(python, ['-c', `
-import sys; sys.path.insert(0, '${vendorDir}')
+import sys; sys.path.insert(0, '${vendorDir}'); sys.path.insert(0, '${matchaTTSDir}')
 from cosyvoice.cli.cosyvoice import CosyVoice; print('cosyvoice installed')
 `.trim()])
     console.log('[setup] CosyVoice (vendor) is already set up, skipping.')
@@ -239,6 +241,13 @@ from cosyvoice.cli.cosyvoice import CosyVoice; print('cosyvoice installed')
     }
     else {
       await spawn('git', ['clone', '--progress', '--filter=blob:none', '--depth=1', 'https://github.com/FunAudioLLM/CosyVoice.git', vendorDir])
+    }
+
+    // NOTICE: CosyVoice depends on third_party/Matcha-TTS (provides the `matcha` module).
+    // This is a git submodule that must be initialized after cloning.
+    if (!existsSync(join(matchaTTSDir, 'matcha'))) {
+      console.log('[setup] Initializing CosyVoice Matcha-TTS submodule...')
+      await spawn('git', ['-C', vendorDir, 'submodule', 'update', '--init', '--depth=1', 'third_party/Matcha-TTS'])
     }
   }
   catch (error) {

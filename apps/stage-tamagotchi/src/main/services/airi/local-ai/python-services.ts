@@ -1,5 +1,6 @@
 import type { LocalAICheckPythonResult } from '@proj-airi/stage-shared/local-ai'
 
+import type { ModelProfile } from './model-profiles'
 import type { LocalAIServiceConfig } from './service-manager'
 
 import process from 'node:process'
@@ -84,66 +85,75 @@ function getCosyVoiceVendorDir(): string | null {
   return null
 }
 
-export const COSYVOICE_SERVICE: LocalAIServiceConfig = {
-  id: 'cosyvoice',
-  get command() { return getVenvPython() },
-  get args() {
-    return [
-      resolveScriptPath('cosyvoice-server.py'),
-      '--port',
-      '10097',
-      '--device',
-      'cpu',
-    ]
-  },
-  port: 10097,
-  readinessProbe: () => fetch('http://localhost:10097/health')
-    .then(r => r.ok)
-    .catch(() => false),
-  get env(): Record<string, string> {
-    const vendorDir = getCosyVoiceVendorDir()
-    if (!vendorDir)
-      return {}
-    const existing = process.env.PYTHONPATH || ''
-    return { PYTHONPATH: existing ? `${vendorDir}:${existing}` : vendorDir }
-  },
+export function createCosyvoiceService(profile: ModelProfile): LocalAIServiceConfig {
+  return {
+    id: 'cosyvoice',
+    get command() { return getVenvPython() },
+    get args() {
+      return [
+        resolveScriptPath('cosyvoice-server.py'),
+        '--port',
+        '10097',
+        '--device',
+        profile.cosyvoice.device,
+      ]
+    },
+    port: 10097,
+    readinessProbe: () => fetch('http://localhost:10097/health')
+      .then(r => r.ok)
+      .catch(() => false),
+    get env(): Record<string, string> {
+      const vendorDir = getCosyVoiceVendorDir()
+      if (!vendorDir)
+        return {}
+      // NOTICE: CosyVoice also needs third_party/Matcha-TTS on PYTHONPATH for the `matcha` module.
+      const matchaTTSDir = join(vendorDir, 'third_party', 'Matcha-TTS')
+      const paths = [vendorDir, matchaTTSDir]
+      const existing = process.env.PYTHONPATH || ''
+      if (existing)
+        paths.push(existing)
+      return { PYTHONPATH: paths.join(':') }
+    },
+  }
 }
 
-export const FUNASR_SERVICE: LocalAIServiceConfig = {
-  id: 'funasr',
-  get command() { return getVenvPython() },
-  get args() {
-    // NOTICE: --vad-model is empty to disable server-side FSMN VAD.
-    // Client-side Silero VAD gates audio so only speech segments reach the server.
-    return [
-      resolveScriptPath('funasr-server.py'),
-      '--model',
-      'iic/SenseVoiceSmall',
-      '--vad-model',
-      '',
-      '--device',
-      'cpu',
-      '--port',
-      '10095',
-    ]
-  },
-  port: 10095,
-  readinessProbe: () => new Promise((resolve) => {
-    const ws = new WebSocket(`ws://localhost:10095`)
-    const timeout = setTimeout(() => {
-      ws.close()
-      resolve(false)
-    }, 3000)
-    ws.onopen = () => {
-      clearTimeout(timeout)
-      ws.close()
-      resolve(true)
-    }
-    ws.onerror = () => {
-      clearTimeout(timeout)
-      resolve(false)
-    }
-  }),
+export function createFunasrService(profile: ModelProfile): LocalAIServiceConfig {
+  return {
+    id: 'funasr',
+    get command() { return getVenvPython() },
+    get args() {
+      // NOTICE: --vad-model is empty to disable server-side FSMN VAD.
+      // Client-side Silero VAD gates audio so only speech segments reach the server.
+      return [
+        resolveScriptPath('funasr-server.py'),
+        '--model',
+        profile.funasr.model,
+        '--vad-model',
+        '',
+        '--device',
+        profile.funasr.device,
+        '--port',
+        '10095',
+      ]
+    },
+    port: 10095,
+    readinessProbe: () => new Promise((resolve) => {
+      const ws = new WebSocket(`ws://localhost:10095`)
+      const timeout = setTimeout(() => {
+        ws.close()
+        resolve(false)
+      }, 3000)
+      ws.onopen = () => {
+        clearTimeout(timeout)
+        ws.close()
+        resolve(true)
+      }
+      ws.onerror = () => {
+        clearTimeout(timeout)
+        resolve(false)
+      }
+    }),
+  }
 }
 
 export function checkPython(): Promise<LocalAICheckPythonResult> {
