@@ -44,6 +44,7 @@ export function useModulesList() {
   const factorioStore = useFactorioStore()
   const localAIStatusStore = useLocalAIServiceStatusStore()
   const funasrState = localAIStatusStore.getServiceState('funasr')
+  const kokoroState = localAIStatusStore.getServiceState('kokoro')
   const beatSyncState = ref<BeatSyncDetectorState>()
 
   minecraftStore.initialize()
@@ -66,6 +67,9 @@ export function useModulesList() {
       to: '/settings/modules/speech',
       configured: speechStore.configured,
       category: 'essential',
+      serviceStatus: speechStore.activeSpeechProvider === 'kokoro-local-server'
+        ? kokoroState.value
+        : undefined,
     },
     {
       id: 'hearing',

@@ -52,46 +52,70 @@ interface LocalAIServiceEntry {
 const READINESS_PROBE_INTERVAL_MS = 1000
 const READINESS_PROBE_MAX_ATTEMPTS = 60
 
-// NOTICE: FunASR 1.3.x no longer ships a built-in WebSocket server.
-// We use a custom bridge script (scripts/funasr-server.py) that wraps
-// AutoModel with a WebSocket server matching the legacy FunASR protocol.
-//
-// app.getAppPath() behavior varies between dev and production:
+// NOTICE: app.getAppPath() behavior varies between dev and production:
 // - dev (electron-vite): usually returns project root (where package.json is)
 // - production: returns the asar/app directory
 // We try multiple candidate paths and pick the first that exists.
-function getFunasrServerScript(): string {
+function resolveScriptPath(scriptName: string): string {
   const candidates = [
-    join(app.getAppPath(), 'scripts', 'funasr-server.py'),
+    join(app.getAppPath(), 'scripts', scriptName),
     // electron-vite dev may return out/main as appPath
-    join(app.getAppPath(), '..', '..', 'scripts', 'funasr-server.py'),
+    join(app.getAppPath(), '..', '..', 'scripts', scriptName),
   ]
 
   const log = useLogg('main/local-ai').useGlobalConfig()
-  log.withFields({ appPath: app.getAppPath(), isDev: is.dev, candidates }).log('Resolving funasr-server.py path')
+  log.withFields({ appPath: app.getAppPath(), isDev: is.dev, candidates }).log(`Resolving ${scriptName} path`)
 
   for (const candidate of candidates) {
     if (existsSync(candidate)) {
-      log.withFields({ resolvedPath: candidate }).log('Found funasr-server.py')
+      log.withFields({ resolvedPath: candidate }).log(`Found ${scriptName}`)
       return candidate
     }
   }
 
   // Fallback to first candidate (will produce a clear error when spawn fails)
-  log.withFields({ candidates }).warn('funasr-server.py not found at any candidate path')
+  log.withFields({ candidates }).warn(`${scriptName} not found at any candidate path`)
   return candidates[0]
+}
+
+function getFunasrServerScript(): string {
+  return resolveScriptPath('funasr-server.py')
+}
+
+function getKokoroServerScript(): string {
+  return resolveScriptPath('kokoro-server.py')
+}
+
+const KOKORO_SERVICE: LocalAIServiceConfig = {
+  id: 'kokoro',
+  command: 'python3',
+  get args() {
+    return [
+      getKokoroServerScript(),
+      '--port',
+      '10096',
+      '--device',
+      'cpu',
+    ]
+  },
+  port: 10096,
+  readinessProbe: () => fetch('http://localhost:10096/health')
+    .then(r => r.ok)
+    .catch(() => false),
 }
 
 const FUNASR_SERVICE: LocalAIServiceConfig = {
   id: 'funasr',
   command: 'python3',
   get args() {
+    // NOTICE: --vad-model is empty to disable server-side FSMN VAD.
+    // Client-side Silero VAD gates audio so only speech segments reach the server.
     return [
       getFunasrServerScript(),
       '--model',
       'iic/SenseVoiceSmall',
       '--vad-model',
-      'iic/speech_fsmn_vad_zh-cn-16k-common-pytorch',
+      '',
       '--device',
       'cpu',
       '--port',
@@ -156,7 +180,7 @@ export function createLocalAIServiceManager(): LocalAIServiceManager {
   const services = new Map<string, LocalAIServiceEntry>()
 
   // Register known services
-  for (const config of [FUNASR_SERVICE]) {
+  for (const config of [FUNASR_SERVICE, KOKORO_SERVICE]) {
     services.set(config.id, {
       config,
       process: null,
@@ -374,9 +398,12 @@ export function setupLocalAIServiceManager(): LocalAIServiceManager {
     await manager.stopAll()
   })
 
-  // Auto-start FunASR in the background. Failure is non-fatal (e.g. Python not installed).
+  // Auto-start services in the background. Failure is non-fatal (e.g. Python not installed).
   manager.start('funasr').catch((err) => {
     log.withError(err).warn('Auto-start of FunASR service failed (non-fatal)')
+  })
+  manager.start('kokoro').catch((err) => {
+    log.withError(err).warn('Auto-start of Kokoro TTS service failed (non-fatal)')
   })
 
   return manager

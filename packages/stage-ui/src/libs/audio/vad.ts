@@ -54,6 +54,12 @@ export interface VADAudioOptions {
    * VAD configuration options
    */
   vadConfig?: Partial<BaseVADConfig>
+
+  /**
+   * Callback invoked with every raw audio buffer from the audio worklet,
+   * before VAD processing. Useful for feeding audio into external pipelines.
+   */
+  onRawAudio?: (buffer: Float32Array) => void
 }
 
 export function createVADStates(vad: BaseVAD, vadAudioWorkletUrl: string, options?: VADAudioOptions) {
@@ -86,7 +92,9 @@ export function createVADStates(vad: BaseVAD, vadAudioWorkletUrl: string, option
       audioWorkletNode.port.onmessage = async (event) => {
         const { buffer } = event.data
         if (buffer && buffer.length > 0) {
-          await vad.processAudio(new Float32Array(buffer))
+          const float32Buffer = new Float32Array(buffer)
+          options?.onRawAudio?.(float32Buffer)
+          await vad.processAudio(float32Buffer)
         }
       }
     }
@@ -141,10 +149,8 @@ export function createVADStates(vad: BaseVAD, vadAudioWorkletUrl: string, option
       audioWorkletNode.disconnect()
       audioWorkletNode = null
     }
-    if (mediaStream) {
-      mediaStream.getTracks().forEach(track => track.stop())
-      mediaStream = null
-    }
+    // NOTICE: Do not stop media stream tracks here — the audio device store manages track lifecycle.
+    mediaStream = null
     if (audioContext && audioContext.state !== 'closed') {
       audioContext.close()
     }
@@ -157,5 +163,8 @@ export function createVADStates(vad: BaseVAD, vadAudioWorkletUrl: string, option
     start,
     stop,
     dispose,
+    get audioContext() {
+      return audioContext
+    },
   }
 }

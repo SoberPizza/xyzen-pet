@@ -82,7 +82,7 @@ export interface SenseVoiceStreamOptions {
  * 4. Receive JSON responses with transcription text (may include SenseVoice tags).
  * 5. Send a JSON end-of-stream marker (`is_speaking: false`) to get the final result.
  */
-export function streamSenseVoiceTranscription(options: SenseVoiceStreamOptions & Record<string, unknown>): StreamTranscriptionResult {
+export function streamSenseVoiceTranscription(options: SenseVoiceStreamOptions & Record<string, unknown>): StreamTranscriptionResult & { signalSpeechEnd: () => void } {
   const baseURL = options.baseURL
     ? (typeof options.baseURL === 'string' ? options.baseURL : options.baseURL.toString())
     : 'ws://localhost:10095'
@@ -98,6 +98,7 @@ export function streamSenseVoiceTranscription(options: SenseVoiceStreamOptions &
   let fullText = ''
   let textStreamCtrl: ReadableStreamDefaultController<string> | undefined
   let fullStreamCtrl: ReadableStreamDefaultController<StreamTranscriptionDelta> | undefined
+  let wsRef: WebSocket | undefined
 
   const fullStream = new ReadableStream<StreamTranscriptionDelta>({
     start(controller) {
@@ -118,6 +119,7 @@ export function streamSenseVoiceTranscription(options: SenseVoiceStreamOptions &
     try {
       console.debug('[SenseVoice] Connecting WebSocket to', baseURL)
       ws = new WebSocket(baseURL)
+      wsRef = ws
       ws.binaryType = 'arraybuffer'
 
       const openPromise = new Promise<void>((resolve, reject) => {
@@ -280,5 +282,11 @@ export function streamSenseVoiceTranscription(options: SenseVoiceStreamOptions &
     fullStream,
     text: deferredText.promise,
     textStream,
+    /** Signal end of current speech segment. Server runs final inference and resets its buffer. */
+    signalSpeechEnd: () => {
+      if (wsRef?.readyState === WebSocket.OPEN) {
+        wsRef.send(JSON.stringify({ is_speaking: false }))
+      }
+    },
   }
 }

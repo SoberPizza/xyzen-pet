@@ -159,11 +159,93 @@ async function prepareFunasr(): Promise<void> {
   console.log('[postinstall] FunASR preparation complete.')
 }
 
+// --- Kokoro TTS ---
+
+async function ensureKokoroInstalled(python: string): Promise<void> {
+  try {
+    await exec(python, ['-c', `${SUPPRESS_URLLIB3_WARN}import kokoro; print('kokoro installed')`])
+    console.log('[postinstall] kokoro is already installed, skipping pip install.')
+    return
+  }
+  catch {
+    // not installed
+  }
+
+  console.log('[postinstall] Installing kokoro and soundfile via pip...')
+  try {
+    await spawn(python, ['-m', 'pip', 'install', '--progress-bar', 'on', 'kokoro', 'soundfile'])
+    console.log('[postinstall] kokoro pip install completed.')
+  }
+  catch (error) {
+    console.error('[postinstall] Failed to install kokoro dependencies:', error)
+    // Non-fatal: Kokoro TTS is optional
+    console.warn('[postinstall] Kokoro TTS will not be available.')
+  }
+}
+
+async function prepareKokoro(): Promise<void> {
+  console.log('[postinstall] Preparing Kokoro TTS environment...')
+  const python = await findPython()
+  await ensureKokoroInstalled(python)
+  console.log('[postinstall] Kokoro TTS preparation complete.')
+}
+
+// --- llama.cpp ---
+
+async function checkBrewInstalled(): Promise<boolean> {
+  try {
+    await exec('brew', ['--version'])
+    return true
+  }
+  catch {
+    return false
+  }
+}
+
+async function prepareLlamaCpp(): Promise<void> {
+  console.log('[postinstall] Preparing llama.cpp environment...')
+
+  // Check if llama-server is already available
+  try {
+    const { stdout } = await exec('llama-server', ['--version'])
+    console.log(`[postinstall] llama-server already installed: ${stdout.trim()}`)
+    return
+  }
+  catch {
+    // not installed, proceed
+  }
+
+  // macOS: install via Homebrew
+  if (process.platform === 'darwin') {
+    if (!await checkBrewInstalled()) {
+      console.warn('[postinstall] Homebrew not found. Skipping llama.cpp installation.')
+      console.warn('[postinstall] To install manually: https://github.com/ggml-org/llama.cpp#build')
+      return
+    }
+    try {
+      console.log('[postinstall] Installing llama.cpp via Homebrew...')
+      await spawn('brew', ['install', 'llama.cpp'])
+      console.log('[postinstall] llama.cpp installed successfully.')
+    }
+    catch (error) {
+      console.warn('[postinstall] Failed to install llama.cpp via Homebrew:', error)
+      console.warn('[postinstall] Local LLM (llama-server) will not be available.')
+    }
+    return
+  }
+
+  // Other platforms: inform the user
+  console.warn('[postinstall] Automatic llama.cpp installation is only supported on macOS (via Homebrew).')
+  console.warn('[postinstall] To install manually: https://github.com/ggml-org/llama.cpp#build')
+}
+
 // --- Main ---
 
 async function main() {
   await installElectronAppDeps()
   await prepareFunasr()
+  await prepareKokoro()
+  await prepareLlamaCpp()
 }
 
 main()

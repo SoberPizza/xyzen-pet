@@ -10,6 +10,8 @@ interface UseVADOptions {
 
   onSpeechStart?: () => void
   onSpeechEnd?: () => void
+  /** Callback invoked with every raw audio buffer from the worklet, before VAD processing. */
+  onRawAudio?: (buffer: Float32Array) => void
 }
 
 export function useVAD(workerUrl: string, options?: UseVADOptions) {
@@ -86,6 +88,7 @@ export function useVAD(workerUrl: string, options?: UseVADOptions) {
           sampleRate: 16000,
           latencyHint: 'interactive',
         },
+        onRawAudio: options?.onRawAudio,
       })
 
       await m.initialize()

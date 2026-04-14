@@ -64,11 +64,19 @@ export interface StreamTranscriptionStreamInputOptions extends Omit<XSAIStreamTr
   inputAudioStream: ReadableStream<ArrayBuffer>
 }
 
-export type StreamTranscription = (options: WithUnknown<StreamTranscriptionFileInputOptions | StreamTranscriptionStreamInputOptions>) => StreamTranscriptionResult
+/** Extra control handles that streaming providers may expose alongside the standard result. */
+interface StreamTranscriptionExtras {
+  /** Signal end of current speech segment (e.g. SenseVoice sends `is_speaking: false` to trigger final inference). */
+  signalSpeechEnd?: () => void
+}
+
+export type StreamTranscriptionResultWithExtras = StreamTranscriptionResult & StreamTranscriptionExtras
+
+export type StreamTranscription = (options: WithUnknown<StreamTranscriptionFileInputOptions | StreamTranscriptionStreamInputOptions>) => StreamTranscriptionResultWithExtras
 
 type GenerateTranscriptionResponse = Awaited<ReturnType<typeof generateTranscription>>
 type HearingTranscriptionGenerateResult = GenerateTranscriptionResponse & { mode: 'generate' }
-type HearingTranscriptionStreamResult = StreamTranscriptionResult & { mode: 'stream' }
+type HearingTranscriptionStreamResult = StreamTranscriptionResultWithExtras & { mode: 'stream' }
 export type HearingTranscriptionResult = HearingTranscriptionGenerateResult | HearingTranscriptionStreamResult
 
 type HearingTranscriptionInput = File | {
@@ -204,7 +212,8 @@ export const useHearingStore = defineStore('hearing-store', () => {
     console.debug('[Hearing] transcription called', { providerId, model, hasStream: !!normalizedInput.inputAudioStream, hasFile: !!normalizedInput.file, features, hasExecutor: !!streamExecutor })
 
     if (features.supportsStreamOutput && streamExecutor) {
-      // TODO: integrate VAD-driven silence detection to stop and restart realtime sessions based on silence thresholds.
+      // NOTICE: VAD-driven silence detection is handled via external VAD-gated audio streams.
+      // Consumers pass `externalAudioStream` from `createVADGatedAudioStream()` to gate audio by speech.
       const request = provider.transcription(model, options?.providerOptions)
       console.debug('[Hearing] Stream transcription request:', { ...request, inputAudioStream: normalizedInput.inputAudioStream ? '<ReadableStream>' : undefined })
 
@@ -339,8 +348,71 @@ export const useHearingSpeechInputPipeline = defineStore('modules:hearing:speech
     return providersStore.getTranscriptionFeatures(providerId).supportsStreamInput
   })
 
+  const supportsVADGatedInput = computed(() => {
+    const providerId = activeTranscriptionProvider.value
+    if (!providerId)
+      return false
+
+    return providersStore.getTranscriptionFeatures(providerId).supportsVADGatedInput
+  })
+
   const DEFAULT_SAMPLE_RATE = 16000
   const DEFAULT_STREAM_IDLE_TIMEOUT = 15000
+
+  /**
+   * Creates a VAD-gated audio stream that only enqueues audio when speech is active.
+   * Includes a small lookback buffer to avoid clipping the start of speech.
+   */
+  function createVADGatedAudioStream(isSpeech: import('vue').Ref<boolean>) {
+    let controller: ReadableStreamDefaultController<ArrayBuffer> | undefined
+    // NOTICE: ~80ms lookback at 16kHz 16-bit mono = 2560 bytes.
+    // This prevents pre-speech clipping since Silero VAD has inherent detection latency.
+    const LOOKBACK_SAMPLES = 1280 // 80ms at 16kHz
+    let lookbackBuffer: Float32Array | null = null
+
+    const audioStream = new ReadableStream<ArrayBuffer>({
+      start(c) {
+        controller = c
+      },
+      cancel() {
+        controller = undefined
+      },
+    })
+
+    function feedAudio(buffer: Float32Array) {
+      if (!controller)
+        return
+
+      if (isSpeech.value) {
+        // Flush lookback buffer on speech start (first frame of speech)
+        if (lookbackBuffer) {
+          const pcm16 = float32ToInt16(lookbackBuffer)
+          controller.enqueue(pcm16.buffer.slice(0) as ArrayBuffer)
+          lookbackBuffer = null
+        }
+
+        const pcm16 = float32ToInt16(buffer)
+        controller.enqueue(pcm16.buffer.slice(0) as ArrayBuffer)
+      }
+      else {
+        // Store last chunk as lookback for next speech start
+        if (buffer.length <= LOOKBACK_SAMPLES) {
+          lookbackBuffer = new Float32Array(buffer)
+        }
+        else {
+          lookbackBuffer = buffer.slice(buffer.length - LOOKBACK_SAMPLES)
+        }
+      }
+    }
+
+    function close() {
+      controller?.close()
+      controller = undefined
+      lookbackBuffer = null
+    }
+
+    return { audioStream, feedAudio, close }
+  }
 
   function float32ToInt16(buffer: Float32Array) {
     const output = new Int16Array(buffer.length)
@@ -508,6 +580,11 @@ export const useHearingSpeechInputPipeline = defineStore('modules:hearing:speech
     onSpeechEnd?: (text: string) => void
     /** Callback for emotion payloads detected by providers that support emotion recognition (e.g. SenseVoice). */
     onEmotion?: (emotion: { name: string, intensity: number }) => void
+    /**
+     * When provided, use this pre-built audio stream instead of creating one from the MediaStream.
+     * Useful for VAD-gated streams where audio is already filtered by speech detection.
+     */
+    externalAudioStream?: ReadableStream<ArrayBuffer>
   }) {
     console.info('[Hearing Pipeline] transcribeForMediaStream called', {
       supportsStreamInput: supportsStreamInput.value,
@@ -721,23 +798,32 @@ export const useHearingSpeechInputPipeline = defineStore('modules:hearing:speech
         }, idleTimeout)
       }
 
-      const session = await createAudioStreamFromMediaStream(
-        stream,
-        options?.sampleRate ?? DEFAULT_SAMPLE_RATE,
-        () => bumpIdle(),
-      )
+      // When an external audio stream is provided (e.g. VAD-gated), skip creating
+      // a separate AudioContext+Worklet pipeline — use the external stream directly.
+      const useExternalStream = !!options?.externalAudioStream
+      const session = useExternalStream
+        ? null
+        : await createAudioStreamFromMediaStream(
+            stream,
+            options?.sampleRate ?? DEFAULT_SAMPLE_RATE,
+            () => bumpIdle(),
+          )
 
-      if (session.audioContext.state === 'suspended')
+      if (session && session.audioContext.state === 'suspended')
         await session.audioContext.resume()
 
       bumpIdle()
+
+      const inputAudioStream = useExternalStream
+        ? options!.externalAudioStream!
+        : session!.audioStream
 
       const model = activeTranscriptionModel.value
       const result = await hearingStore.transcription(
         providerId,
         provider,
         model,
-        { inputAudioStream: session.audioStream },
+        { inputAudioStream },
         undefined,
         {
           providerOptions: {
@@ -752,10 +838,10 @@ export const useHearingSpeechInputPipeline = defineStore('modules:hearing:speech
       )
 
       streamingSession.value = {
-        audioContext: session.audioContext,
-        workletNode: session.workletNode,
-        mediaStreamSource: session.mediaStreamSource,
-        audioStreamController: session.controller,
+        audioContext: session?.audioContext ?? ({} as Record<string, never>),
+        workletNode: session?.workletNode ?? ({} as Record<string, never>),
+        mediaStreamSource: session?.mediaStreamSource ?? ({} as Record<string, never>),
+        audioStreamController: session?.controller,
         abortController,
         result,
         idleTimer,
@@ -849,12 +935,27 @@ export const useHearingSpeechInputPipeline = defineStore('modules:hearing:speech
     }
   }
 
+  /**
+   * Signal the active streaming session that the current speech segment has ended.
+   * For SenseVoice, this triggers final inference on the accumulated audio.
+   */
+  function signalSpeechEnd() {
+    const session = streamingSession.value
+    const result = session?.result
+    if (result?.mode === 'stream' && result.signalSpeechEnd) {
+      result.signalSpeechEnd()
+    }
+  }
+
   return {
     error,
 
+    createVADGatedAudioStream,
     transcribeForRecording,
     transcribeForMediaStream,
     stopStreamingTranscription,
+    signalSpeechEnd,
     supportsStreamInput,
+    supportsVADGatedInput,
   }
 })

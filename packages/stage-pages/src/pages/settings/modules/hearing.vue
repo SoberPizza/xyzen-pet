@@ -66,9 +66,12 @@ const {
   transcribeForRecording,
   transcribeForMediaStream,
   stopStreamingTranscription,
+  createVADGatedAudioStream,
+  signalSpeechEnd,
 } = hearingSpeechInputPipeline
 const {
   supportsStreamInput,
+  supportsVADGatedInput,
   error: transcriptionPipelineError,
 } = storeToRefs(hearingSpeechInputPipeline)
 
@@ -101,11 +104,21 @@ const useVADThreshold = ref(0.6) // 0.1 - 0.9
 const useVADModel = ref(true) // Toggle between VAD and volume-based detection
 const shouldUseStreamInput = computed(() => supportsStreamInput.value && !!stream.value)
 
+// VAD-gated audio stream for settings test
+let vadGatedStream: ReturnType<typeof createVADGatedAudioStream> | undefined
+// Forward-declared ref for VAD speech state; assigned after useVAD initializes
+const isSpeechVADRef = ref(false)
+
 async function handleSpeechStart() {
   if (shouldUseStreamInput.value && stream.value) {
+    const useVADGating = supportsVADGatedInput.value
+    if (useVADGating && !vadGatedStream) {
+      vadGatedStream = createVADGatedAudioStream(isSpeechVADRef)
+    }
+
     // Use both callbacks to support incremental updates and final transcript replacement.
-    // ChatArea uses only onSentenceEnd to avoid re-adding deleted text.
     await transcribeForMediaStream(stream.value, {
+      ...(useVADGating && vadGatedStream ? { externalAudioStream: vadGatedStream.audioStream } : {}),
       onSentenceEnd: (delta) => {
         transcriptions.value.push(delta)
       },
@@ -121,7 +134,10 @@ async function handleSpeechStart() {
 
 async function handleSpeechEnd() {
   if (shouldUseStreamInput.value) {
-    // For streaming providers, keep the session alive; idle timer will handle teardown.
+    // Signal the transcription provider that this speech segment ended (VAD-gated providers only)
+    if (supportsVADGatedInput.value) {
+      signalSpeechEnd()
+    }
     return
   }
 
@@ -146,7 +162,13 @@ const {
   onSpeechEnd: () => {
     void handleSpeechEnd()
   },
+  onRawAudio: (buffer) => {
+    vadGatedStream?.feedAudio(buffer)
+  },
 })
+
+// Sync forward-declared ref with actual VAD state
+watch(isSpeechVAD, v => isSpeechVADRef.value = v)
 
 const isSpeechVolume = ref(false) // Volume-based speaking detection
 const isSpeech = computed(() => {
@@ -201,6 +223,8 @@ async function stopAudioMonitoring() {
     animationFrame.value = undefined
   }
 
+  vadGatedStream?.close()
+  vadGatedStream = undefined
   await stopStreamingTranscription(true, activeTranscriptionProvider.value)
   if (stream.value) { // Stop media stream
     stopStream()

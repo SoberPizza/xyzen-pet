@@ -173,6 +173,11 @@ export interface ProviderMetadata {
     supportsGenerate: boolean
     supportsStreamOutput: boolean
     supportsStreamInput: boolean
+    /**
+     * When true, the provider accepts VAD-gated audio (only speech segments).
+     * Providers with their own server-side VAD (e.g. Aliyun NLS) may prefer continuous audio.
+     */
+    supportsVADGatedInput?: boolean
   }
 }
 
@@ -935,6 +940,7 @@ export const useProvidersStore = defineStore('providers', () => {
         supportsGenerate: false,
         supportsStreamOutput: true,
         supportsStreamInput: true,
+        supportsVADGatedInput: true,
       },
       createProvider: async (config) => {
         const baseUrl = typeof config.baseUrl === 'string' ? config.baseUrl.trim() : 'ws://localhost:10095'
@@ -1800,6 +1806,99 @@ export const useProvidersStore = defineStore('providers', () => {
         },
       },
     },
+    'kokoro-local-server': {
+      id: 'kokoro-local-server',
+      locality: 'local',
+      category: 'speech',
+      tasks: ['text-to-speech'],
+      nameKey: 'settings.pages.providers.provider.kokoro-local-server.title',
+      name: 'Kokoro TTS (Local Server)',
+      descriptionKey: 'settings.pages.providers.provider.kokoro-local-server.description',
+      description: 'Kokoro TTS running as a local Python server (Electron only).',
+      icon: 'i-lobe-icons:speaker',
+      requiresCredentials: false,
+      isAvailableBy: isStageTamagotchi,
+
+      defaultOptions: () => ({
+        baseUrl: 'http://localhost:10096',
+      }),
+
+      createProvider: async (config) => {
+        const baseUrl = typeof config.baseUrl === 'string' ? config.baseUrl.trim() : 'http://localhost:10096'
+
+        const provider: SpeechProvider = {
+          speech: () => ({
+            baseURL: `${baseUrl}/v1/`,
+            model: 'kokoro',
+          }),
+        }
+
+        return provider
+      },
+
+      capabilities: {
+        listModels: async () => {
+          return [
+            {
+              id: 'kokoro',
+              name: 'Kokoro',
+              provider: 'kokoro-local-server',
+              description: 'Kokoro TTS model running on local Python server.',
+              contextLength: 0,
+              deprecated: false,
+            },
+          ]
+        },
+
+        listVoices: async (config: Record<string, unknown>) => {
+          const baseUrl = typeof config.baseUrl === 'string' ? config.baseUrl.trim() : 'http://localhost:10096'
+          try {
+            const res = await fetch(`${baseUrl}/v1/voices`)
+            if (!res.ok)
+              return []
+            const data = await res.json()
+            return (data.voices || []).map((v: { id: string, name: string }) => ({
+              id: v.id,
+              name: v.name,
+              provider: 'kokoro-local-server',
+              languages: [{ code: 'en-US', title: 'English (US)' }],
+              gender: 'neutral',
+            }))
+          }
+          catch {
+            return []
+          }
+        },
+      },
+
+      validators: {
+        chatPingCheckAvailable: false,
+        validateProviderConfig: async (config: any) => {
+          const baseUrl = typeof config.baseUrl === 'string' ? config.baseUrl.trim() : ''
+          const errors: Error[] = []
+
+          if (!baseUrl) {
+            errors.push(new Error('Server URL is required (e.g. http://localhost:10096).'))
+          }
+          else {
+            try {
+              const res = await fetch(`${baseUrl}/health`)
+              if (!res.ok)
+                errors.push(new Error('Kokoro server health check failed.'))
+            }
+            catch {
+              errors.push(new Error('Cannot reach Kokoro server. Ensure it is running.'))
+            }
+          }
+
+          return {
+            errors,
+            reason: errors.map(e => e.message).join(', '),
+            valid: errors.length === 0,
+          }
+        },
+      },
+    },
   }
 
   // Progressive migration bridge:
@@ -2190,6 +2289,7 @@ export const useProvidersStore = defineStore('providers', () => {
       supportsGenerate: features?.supportsGenerate ?? true,
       supportsStreamOutput: features?.supportsStreamOutput ?? false,
       supportsStreamInput: features?.supportsStreamInput ?? false,
+      supportsVADGatedInput: features?.supportsVADGatedInput ?? false,
     }
   }
 

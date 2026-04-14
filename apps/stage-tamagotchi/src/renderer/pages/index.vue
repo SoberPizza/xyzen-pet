@@ -241,18 +241,24 @@ const { stream, enabled } = storeToRefs(settingsAudioDeviceStore)
 const { askPermission } = settingsAudioDeviceStore
 const { startRecord, stopRecord, onStopRecord } = useAudioRecorder(stream)
 const hearingPipeline = useHearingSpeechInputPipeline()
-const { transcribeForRecording, transcribeForMediaStream, stopStreamingTranscription } = hearingPipeline
-const { supportsStreamInput } = storeToRefs(hearingPipeline)
+const { transcribeForRecording, transcribeForMediaStream, stopStreamingTranscription, createVADGatedAudioStream, signalSpeechEnd } = hearingPipeline
+const { supportsStreamInput, supportsVADGatedInput } = storeToRefs(hearingPipeline)
 const chatSyncStore = useChatSyncStore()
 const shouldUseStreamInput = computed(() => supportsStreamInput.value && !!stream.value)
 
-const { init: initVAD, dispose: disposeVAD, start: startVAD, loaded: vadLoaded } = useVAD(workletUrl, {
+// VAD-gated audio stream: only speech segments reach the transcription provider
+let vadGatedStream: ReturnType<typeof createVADGatedAudioStream> | undefined
+
+const { isSpeech, init: initVAD, dispose: disposeVAD, start: startVAD, loaded: vadLoaded } = useVAD(workletUrl, {
   threshold: ref(0.6),
   onSpeechStart: () => {
     void handleSpeechStart()
   },
   onSpeechEnd: () => {
     void handleSpeechEnd()
+  },
+  onRawAudio: (buffer) => {
+    vadGatedStream?.feedAudio(buffer)
   },
 })
 
@@ -301,7 +307,11 @@ async function handleSpeechStart() {
 
 async function handleSpeechEnd() {
   if (shouldUseStreamInput.value) {
-    // Keep streaming session alive; idle timer in pipeline will handle teardown.
+    // Signal the transcription provider that this speech segment ended,
+    // triggering final inference on the accumulated audio (e.g. SenseVoice).
+    if (supportsVADGatedInput.value) {
+      signalSpeechEnd()
+    }
     return
   }
 
@@ -345,13 +355,22 @@ async function startAudioInteraction() {
         return
       }
 
+      // Create VAD-gated stream when the provider supports it (e.g. SenseVoice).
+      // Providers with their own server-side VAD (e.g. Aliyun NLS) receive continuous audio.
+      const useVADGating = supportsVADGatedInput.value
+      if (useVADGating) {
+        vadGatedStream?.close()
+        vadGatedStream = createVADGatedAudioStream(isSpeech)
+      }
+
       // Use sentence deltas for live captions and speech end for final text.
       await transcribeForMediaStream(stream.value, {
+        ...(useVADGating && vadGatedStream ? { externalAudioStream: vadGatedStream.audioStream } : {}),
         onSentenceEnd: handleStreamingSentenceEnd,
         onSpeechEnd: handleStreamingSpeechEnd,
       })
 
-      console.info('[Main Page] Streaming transcription started successfully')
+      console.info(`[Main Page] Streaming transcription started successfully${useVADGating ? ' (VAD-gated)' : ''}`)
     }
     else {
       console.warn('[Main Page] Not starting streaming transcription:', {
@@ -403,6 +422,8 @@ function stopAudioInteraction() {
     stopOnStopRecord?.()
     stopOnStopRecord = undefined
     audioInteractionStarting.value = false
+    vadGatedStream?.close()
+    vadGatedStream = undefined
     void stopStreamingTranscription(true)
     disposeVAD()
   })

@@ -26,17 +26,18 @@ parser = argparse.ArgumentParser(description='FunASR SenseVoice WebSocket server
 parser.add_argument('--port', type=int, default=10095)
 parser.add_argument('--device', type=str, default='cpu')
 parser.add_argument('--model', type=str, default='iic/SenseVoiceSmall')
-parser.add_argument('--vad-model', type=str, default='iic/speech_fsmn_vad_zh-cn-16k-common-pytorch')
+parser.add_argument('--vad-model', type=str, default='',
+                    help='VAD model ID. Empty string disables server-side VAD (client-side Silero VAD gates audio instead).')
 args = parser.parse_args()
 
-print(f'[funasr-server] Loading model={args.model} vad={args.vad_model} device={args.device}', flush=True)
+print(f'[funasr-server] Loading model={args.model} vad={args.vad_model or "(disabled)"} device={args.device}', flush=True)
 
 import numpy as np  # noqa: E402
 from funasr import AutoModel  # noqa: E402
 
 model = AutoModel(
     model=args.model,
-    vad_model=args.vad_model,
+    vad_model=args.vad_model or None,
     device=args.device,
     disable_update=True,
 )
