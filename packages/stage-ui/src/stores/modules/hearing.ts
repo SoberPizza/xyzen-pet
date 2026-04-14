@@ -862,6 +862,10 @@ export const useHearingSpeechInputPipeline = defineStore('modules:hearing:speech
             onSentenceEnd: streamingSession.value?.callbacks?.onSentenceEnd,
             onSpeechEnd: streamingSession.value?.callbacks?.onSpeechEnd,
           }
+          console.debug('[Hearing Pipeline] textStream reader started', {
+            hasOnSentenceEnd: !!sessionCallbacks.onSentenceEnd,
+            hasOnSpeechEnd: !!sessionCallbacks.onSpeechEnd,
+          })
 
           let fullText = ''
           try {
@@ -873,6 +877,7 @@ export const useHearingSpeechInputPipeline = defineStore('modules:hearing:speech
                 break
               if (value) {
                 fullText += value
+                console.debug('[Hearing Pipeline] onSentenceEnd delta:', value)
                 // Use captured callbacks to avoid cross-session leakage
                 sessionCallbacks.onSentenceEnd?.(value)
               }

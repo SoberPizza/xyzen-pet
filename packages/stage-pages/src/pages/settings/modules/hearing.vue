@@ -81,6 +81,14 @@ const error = ref<string>('')
 const isMonitoring = ref(false)
 
 const transcriptions = ref<string[]>([])
+// Stable callback references for monitoring mode — avoids session thrashing
+// in `haveStreamingCallbacksChanged()` which compares by reference identity.
+function monitoringOnSentenceEnd(delta: string) {
+  transcriptions.value.push(delta)
+}
+function monitoringOnSpeechEnd(text: string) {
+  transcriptions.value = [text]
+}
 const audios = ref<Blob[]>([])
 const audioCleanups = ref<(() => void)[]>([])
 const audioURLs = computed(() => {
@@ -110,21 +118,20 @@ let vadGatedStream: ReturnType<typeof createVADGatedAudioStream> | undefined
 const isSpeechVADRef = ref(false)
 
 async function handleSpeechStart() {
+  if (isTestingSTT.value)
+    return // Don't overwrite STT test session
+
   if (shouldUseStreamInput.value && stream.value) {
     const useVADGating = supportsVADGatedInput.value
     if (useVADGating && !vadGatedStream) {
       vadGatedStream = createVADGatedAudioStream(isSpeechVADRef)
     }
 
-    // Use both callbacks to support incremental updates and final transcript replacement.
+    // Use stable callback references to avoid session thrashing in haveStreamingCallbacksChanged().
     await transcribeForMediaStream(stream.value, {
       ...(useVADGating && vadGatedStream ? { externalAudioStream: vadGatedStream.audioStream } : {}),
-      onSentenceEnd: (delta) => {
-        transcriptions.value.push(delta)
-      },
-      onSpeechEnd: (text) => {
-        transcriptions.value = [text]
-      },
+      onSentenceEnd: monitoringOnSentenceEnd,
+      onSpeechEnd: monitoringOnSpeechEnd,
     })
     return
   }
@@ -133,6 +140,9 @@ async function handleSpeechStart() {
 }
 
 async function handleSpeechEnd() {
+  if (isTestingSTT.value)
+    return // Don't interfere with STT test
+
   if (shouldUseStreamInput.value) {
     // Signal the transcription provider that this speech segment ended (VAD-gated providers only)
     if (supportsVADGatedInput.value) {
@@ -1006,7 +1016,7 @@ onUnmounted(() => {
                 Transcription Result
               </label>
               <div
-                v-if="testTranscriptionText || testStreamingText"
+                v-if="testTranscriptionText || testStreamingText || (isTestingSTT && shouldUseStreamInput)"
                 class="min-h-[100px] border border-neutral-200 rounded-lg bg-white p-3 text-sm dark:border-neutral-700 dark:bg-neutral-900"
               >
                 <div v-if="testStreamingText && shouldUseStreamInput" class="text-neutral-600 dark:text-neutral-400">
@@ -1015,6 +1025,12 @@ onUnmounted(() => {
                   </div>
                   <div class="whitespace-pre-wrap">
                     {{ testStreamingText }}
+                  </div>
+                </div>
+                <div v-else-if="isTestingSTT && shouldUseStreamInput && !testTranscriptionText" class="text-neutral-400 dark:text-neutral-500">
+                  <div class="flex items-center gap-2">
+                    <div class="animate-pulse text-sm" i-solar:microphone-3-line-duotone />
+                    <span>Waiting for speech...</span>
                   </div>
                 </div>
                 <div v-if="testTranscriptionText" class="text-neutral-700 dark:text-neutral-200">
