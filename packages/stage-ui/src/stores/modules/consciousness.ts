@@ -9,8 +9,8 @@ export const useConsciousnessStore = defineStore('consciousness', () => {
   const providersStore = useProvidersStore()
 
   // State
-  const activeProvider = useLocalStorageManualReset<string>('settings/consciousness/active-provider', '')
-  const activeModel = useLocalStorageManualReset<string>('settings/consciousness/active-model', '')
+  const activeProvider = useLocalStorageManualReset<string>('settings/consciousness/active-provider', 'llama-cpp-local')
+  const activeModel = useLocalStorageManualReset<string>('settings/consciousness/active-model', 'qwen3-1.7b')
   const activeCustomModelName = useLocalStorageManualReset<string>('settings/consciousness/active-custom-model', '')
   const expandedDescriptions = refManualReset<Record<string, boolean>>(() => ({}))
   const modelSearchQuery = refManualReset<string>('')

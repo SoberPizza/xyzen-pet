@@ -190,6 +190,50 @@ async function prepareKokoro(): Promise<void> {
   console.log('[postinstall] Kokoro TTS preparation complete.')
 }
 
+// --- CosyVoice TTS ---
+
+async function ensureCosyVoiceInstalled(python: string): Promise<void> {
+  try {
+    await exec(python, ['-c', `${SUPPRESS_URLLIB3_WARN}from cosyvoice.cli.cosyvoice import CosyVoice; print('cosyvoice installed')`])
+    console.log('[postinstall] cosyvoice is already installed, skipping pip install.')
+    return
+  }
+  catch {
+    // not installed
+  }
+
+  console.log('[postinstall] Installing cosyvoice dependencies via pip...')
+  try {
+    await spawn(python, ['-m', 'pip', 'install', '--progress-bar', 'on', 'cosyvoice', 'soundfile', 'modelscope'])
+    console.log('[postinstall] cosyvoice pip install completed.')
+  }
+  catch (error) {
+    console.error('[postinstall] Failed to install cosyvoice dependencies:', error)
+    console.warn('[postinstall] CosyVoice TTS will not be available.')
+  }
+}
+
+async function downloadCosyVoiceModel(python: string): Promise<void> {
+  const model = 'iic/CosyVoice-300M-SFT'
+  console.log(`[postinstall] Downloading CosyVoice model: ${model} ...`)
+  try {
+    await spawn(python, ['-c', downloadModelScript(model)])
+    console.log(`[postinstall] CosyVoice model ${model} is cached.`)
+  }
+  catch (error) {
+    console.error(`[postinstall] Failed to download CosyVoice model ${model}:`, error)
+    console.warn('[postinstall] CosyVoice TTS will not be available.')
+  }
+}
+
+async function prepareCosyVoice(): Promise<void> {
+  console.log('[postinstall] Preparing CosyVoice TTS environment...')
+  const python = await findPython()
+  await ensureCosyVoiceInstalled(python)
+  await downloadCosyVoiceModel(python)
+  console.log('[postinstall] CosyVoice TTS preparation complete.')
+}
+
 // --- llama.cpp ---
 
 async function checkBrewInstalled(): Promise<boolean> {
@@ -239,13 +283,57 @@ async function prepareLlamaCpp(): Promise<void> {
   console.warn('[postinstall] To install manually: https://github.com/ggml-org/llama.cpp#build')
 }
 
+async function downloadQwen3Model(python: string): Promise<void> {
+  const modelRepo = 'Qwen/Qwen3-1.7B-GGUF'
+  const modelFile = 'Qwen3-1.7B-Q4_K_M.gguf'
+  console.log(`[postinstall] Downloading Qwen3-1.7B GGUF model...`)
+  try {
+    // Use huggingface_hub to download the specific GGUF file
+    await spawn(python, ['-c', `
+import warnings; warnings.filterwarnings('ignore', message='.*LibreSSL.*')
+from huggingface_hub import hf_hub_download
+path = hf_hub_download(repo_id='${modelRepo}', filename='${modelFile}')
+print(f'Model downloaded to: {path}', flush=True)
+`.trim()])
+    console.log(`[postinstall] Qwen3-1.7B GGUF model is cached.`)
+  }
+  catch (error) {
+    console.error(`[postinstall] Failed to download Qwen3-1.7B GGUF model:`, error)
+    console.warn('[postinstall] Local LLM (llama-server with Qwen3) will not be available.')
+  }
+}
+
+async function ensureHuggingfaceHub(python: string): Promise<void> {
+  try {
+    await exec(python, ['-c', `${SUPPRESS_URLLIB3_WARN}import huggingface_hub; print(huggingface_hub.__version__)`])
+    return
+  }
+  catch {
+    // not installed
+  }
+
+  console.log('[postinstall] Installing huggingface_hub via pip...')
+  try {
+    await spawn(python, ['-m', 'pip', 'install', '--progress-bar', 'on', 'huggingface_hub'])
+  }
+  catch (error) {
+    console.error('[postinstall] Failed to install huggingface_hub:', error)
+  }
+}
+
 // --- Main ---
 
 async function main() {
   await installElectronAppDeps()
   await prepareFunasr()
   await prepareKokoro()
+  await prepareCosyVoice()
   await prepareLlamaCpp()
+
+  // Download Qwen3-1.7B GGUF model for llama-server
+  const python = await findPython()
+  await ensureHuggingfaceHub(python)
+  await downloadQwen3Model(python)
 }
 
 main()

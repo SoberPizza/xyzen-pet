@@ -1899,6 +1899,99 @@ export const useProvidersStore = defineStore('providers', () => {
         },
       },
     },
+    'cosyvoice-local-server': {
+      id: 'cosyvoice-local-server',
+      locality: 'local',
+      category: 'speech',
+      tasks: ['text-to-speech'],
+      nameKey: 'settings.pages.providers.provider.cosyvoice-local-server.title',
+      name: 'CosyVoice (Local Server)',
+      descriptionKey: 'settings.pages.providers.provider.cosyvoice-local-server.description',
+      description: 'CosyVoice-300M-SFT running as a local Python server (Electron only).',
+      icon: 'i-lobe-icons:speaker',
+      requiresCredentials: false,
+      isAvailableBy: isStageTamagotchi,
+
+      defaultOptions: () => ({
+        baseUrl: 'http://localhost:10097',
+      }),
+
+      createProvider: async (config) => {
+        const baseUrl = typeof config.baseUrl === 'string' ? config.baseUrl.trim() : 'http://localhost:10097'
+
+        const provider: SpeechProvider = {
+          speech: () => ({
+            baseURL: `${baseUrl}/v1/`,
+            model: 'CosyVoice-300M-SFT',
+          }),
+        }
+
+        return provider
+      },
+
+      capabilities: {
+        listModels: async () => {
+          return [
+            {
+              id: 'CosyVoice-300M-SFT',
+              name: 'CosyVoice-300M-SFT',
+              provider: 'cosyvoice-local-server',
+              description: 'CosyVoice 300M SFT model running on local Python server.',
+              contextLength: 0,
+              deprecated: false,
+            },
+          ]
+        },
+
+        listVoices: async (config: Record<string, unknown>) => {
+          const baseUrl = typeof config.baseUrl === 'string' ? config.baseUrl.trim() : 'http://localhost:10097'
+          try {
+            const res = await fetch(`${baseUrl}/v1/voices`)
+            if (!res.ok)
+              return []
+            const data = await res.json()
+            return (data.voices || []).map((v: { id: string, name: string }) => ({
+              id: v.id,
+              name: v.name,
+              provider: 'cosyvoice-local-server',
+              languages: [{ code: 'zh-CN', title: 'Chinese (Mandarin)' }],
+              gender: 'neutral',
+            }))
+          }
+          catch {
+            return []
+          }
+        },
+      },
+
+      validators: {
+        chatPingCheckAvailable: false,
+        validateProviderConfig: async (config: any) => {
+          const baseUrl = typeof config.baseUrl === 'string' ? config.baseUrl.trim() : ''
+          const errors: Error[] = []
+
+          if (!baseUrl) {
+            errors.push(new Error('Server URL is required (e.g. http://localhost:10097).'))
+          }
+          else {
+            try {
+              const res = await fetch(`${baseUrl}/health`)
+              if (!res.ok)
+                errors.push(new Error('CosyVoice server health check failed.'))
+            }
+            catch {
+              errors.push(new Error('Cannot reach CosyVoice server. Ensure it is running.'))
+            }
+          }
+
+          return {
+            errors,
+            reason: errors.map(e => e.message).join(', '),
+            valid: errors.length === 0,
+          }
+        },
+      },
+    },
   }
 
   // Progressive migration bridge:

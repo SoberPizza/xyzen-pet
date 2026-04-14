@@ -86,6 +86,10 @@ function getKokoroServerScript(): string {
   return resolveScriptPath('kokoro-server.py')
 }
 
+function getCosyVoiceServerScript(): string {
+  return resolveScriptPath('cosyvoice-server.py')
+}
+
 const KOKORO_SERVICE: LocalAIServiceConfig = {
   id: 'kokoro',
   command: 'python3',
@@ -100,6 +104,24 @@ const KOKORO_SERVICE: LocalAIServiceConfig = {
   },
   port: 10096,
   readinessProbe: () => fetch('http://localhost:10096/health')
+    .then(r => r.ok)
+    .catch(() => false),
+}
+
+const COSYVOICE_SERVICE: LocalAIServiceConfig = {
+  id: 'cosyvoice',
+  command: 'python3',
+  get args() {
+    return [
+      getCosyVoiceServerScript(),
+      '--port',
+      '10097',
+      '--device',
+      'cpu',
+    ]
+  },
+  port: 10097,
+  readinessProbe: () => fetch('http://localhost:10097/health')
     .then(r => r.ok)
     .catch(() => false),
 }
@@ -180,7 +202,7 @@ export function createLocalAIServiceManager(): LocalAIServiceManager {
   const services = new Map<string, LocalAIServiceEntry>()
 
   // Register known services
-  for (const config of [FUNASR_SERVICE, KOKORO_SERVICE]) {
+  for (const config of [FUNASR_SERVICE, KOKORO_SERVICE, COSYVOICE_SERVICE]) {
     services.set(config.id, {
       config,
       process: null,
@@ -404,6 +426,21 @@ export function setupLocalAIServiceManager(): LocalAIServiceManager {
   })
   manager.start('kokoro').catch((err) => {
     log.withError(err).warn('Auto-start of Kokoro TTS service failed (non-fatal)')
+  })
+  manager.start('cosyvoice').catch((err) => {
+    log.withError(err).warn('Auto-start of CosyVoice TTS service failed (non-fatal)')
+  })
+
+  // Auto-start llama-server with default Qwen3-1.7B configuration
+  const defaultLlamaConfig = createLlamaServerConfig({
+    modelPath: 'Qwen3-1.7B-Q4_K_M.gguf',
+    port: 8080,
+    contextLength: 4096,
+    gpuLayers: 0,
+  })
+  manager.registerService(defaultLlamaConfig)
+  manager.start('llama-server').catch((err) => {
+    log.withError(err).warn('Auto-start of llama-server failed (non-fatal)')
   })
 
   return manager

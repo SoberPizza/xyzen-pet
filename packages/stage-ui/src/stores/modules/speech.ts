@@ -25,8 +25,8 @@ export const useSpeechStore = defineStore('speech', () => {
   const { allAudioSpeechProvidersMetadata } = storeToRefs(providersStore)
 
   // State
-  const activeSpeechProvider = useLocalStorageManualReset<string>('settings/speech/active-provider', 'speech-noop')
-  const activeSpeechModel = useLocalStorageManualReset<string>('settings/speech/active-model', '')
+  const activeSpeechProvider = useLocalStorageManualReset<string>('settings/speech/active-provider', 'cosyvoice-local-server')
+  const activeSpeechModel = useLocalStorageManualReset<string>('settings/speech/active-model', 'CosyVoice-300M-SFT')
   const activeSpeechVoiceId = useLocalStorageManualReset<string>('settings/speech/voice', '')
   const activeSpeechVoice = refManualReset<VoiceInfo | undefined>(undefined)
 
@@ -125,7 +125,7 @@ export const useSpeechStore = defineStore('speech', () => {
   })
 
   if (!activeSpeechProvider.value) {
-    activeSpeechProvider.value = 'speech-noop'
+    activeSpeechProvider.value = 'cosyvoice-local-server'
   }
 
   watch(
@@ -148,8 +148,8 @@ export const useSpeechStore = defineStore('speech', () => {
       // configuredSpeechProvidersMetadata and incorrectly reset activeSpeechProvider
       // to 'speech-noop', permanently wiping the persisted selection from localStorage.
       if (!configuredProviderIds.includes(activeSpeechProvider.value)) {
-        activeSpeechProvider.value = 'speech-noop'
-        activeSpeechModel.value = ''
+        activeSpeechProvider.value = 'cosyvoice-local-server'
+        activeSpeechModel.value = 'CosyVoice-300M-SFT'
         activeSpeechVoiceId.value = ''
         activeSpeechVoice.value = undefined
       }
@@ -264,10 +264,7 @@ export const useSpeechStore = defineStore('speech', () => {
   }
 
   const configured = computed(() => {
-    if (activeSpeechProvider.value === 'speech-noop')
-      return false
-
-    if (!activeSpeechProvider.value)
+    if (!activeSpeechProvider.value || activeSpeechProvider.value === 'speech-noop')
       return false
 
     let hasModel = !!activeSpeechModel.value
