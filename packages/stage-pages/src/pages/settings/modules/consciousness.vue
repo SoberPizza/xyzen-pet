@@ -1,19 +1,17 @@
 <script setup lang="ts">
 import type {
-  LocalAICheckLlamaResult,
-  LocalAILlamaServerConfig,
+  LocalAICheckOllamaResult,
   LocalAIServiceStatus,
   LocalAIStatusResult,
 } from '@proj-airi/stage-shared/local-ai'
-import type { RemovableRef } from '@vueuse/core'
 
 import { defineInvoke } from '@moeru/eventa'
 import { createContext } from '@moeru/eventa/adapters/electron/renderer'
 import { errorMessageFrom } from '@moeru/std'
 import { isElectronWindow } from '@proj-airi/stage-shared'
 import {
-  localAICheckLlamaEventa,
-  localAIConfigureLlamaEventa,
+  localAICheckOllamaEventa,
+  localAIConfigureOllamaEventa,
   localAIGetStatusEventa,
   localAIStopEventa,
 } from '@proj-airi/stage-shared/local-ai'
@@ -21,15 +19,14 @@ import { AddProviderDialog, Alert, EditProviderDialog, ErrorContainer, RadioCard
 import { useAnalytics } from '@proj-airi/stage-ui/composables'
 import { useConsciousnessStore } from '@proj-airi/stage-ui/stores/modules/consciousness'
 import { useProvidersStore } from '@proj-airi/stage-ui/stores/providers'
-import { Button, FieldInput } from '@proj-airi/ui'
+import { Button } from '@proj-airi/ui'
 import { storeToRefs } from 'pinia'
-import { computed, onUnmounted, reactive, ref, watch } from 'vue'
+import { computed, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 const providersStore = useProvidersStore()
 const consciousnessStore = useConsciousnessStore()
 const { localChatProviders, cloudChatProviders, allCloudChatProviders, configuredProviders } = storeToRefs(providersStore)
-const { providers } = storeToRefs(providersStore) as { providers: RemovableRef<Record<string, any>> }
 const {
   activeProvider,
   activeModel,
@@ -48,135 +45,91 @@ const showAddDialog = ref(false)
 const showEditDialog = ref(false)
 const editingProviderId = ref('')
 
-// llama-server service management (Electron only)
+// Ollama service management (Electron only)
 const isElectron = typeof window !== 'undefined' && isElectronWindow(window)
-const llamaCheck = ref<LocalAICheckLlamaResult | null>(null)
-const isCheckingLlama = ref(false)
-const isTogglingLlamaService = ref(false)
-const llamaServiceStatus = ref<LocalAIServiceStatus | null>(null)
-const llamaError = ref<string | null>(null)
+const ollamaCheck = ref<LocalAICheckOllamaResult | null>(null)
+const isCheckingOllama = ref(false)
+const isTogglingOllamaService = ref(false)
+const ollamaServiceStatus = ref<LocalAIServiceStatus | null>(null)
+const ollamaError = ref<string | null>(null)
 
-function ensureLlamaProvider() {
-  if (!providers.value['llama-cpp-local'])
-    providers.value['llama-cpp-local'] = {}
-}
-
-const llamaConfig = reactive({
-  get modelPath() { return providers.value['llama-cpp-local']?.modelPath || '' },
-  set modelPath(v: string) {
-    ensureLlamaProvider()
-    providers.value['llama-cpp-local'].modelPath = v
-  },
-  get port() { return providers.value['llama-cpp-local']?.port || 8080 },
-  set port(v: number) {
-    ensureLlamaProvider()
-    providers.value['llama-cpp-local'].port = v
-  },
-  get contextLength() { return providers.value['llama-cpp-local']?.contextLength || 2048 },
-  set contextLength(v: number) {
-    ensureLlamaProvider()
-    providers.value['llama-cpp-local'].contextLength = v
-  },
-  get gpuLayers() { return providers.value['llama-cpp-local']?.gpuLayers ?? -1 },
-  set gpuLayers(v: number) {
-    ensureLlamaProvider()
-    providers.value['llama-cpp-local'].gpuLayers = v
-  },
-})
-
-let invokeLlamaCheck: (() => Promise<LocalAICheckLlamaResult>) | undefined
-let invokeLlamaConfigure: ((payload: LocalAILlamaServerConfig) => Promise<LocalAIServiceStatus>) | undefined
+let invokeOllamaCheck: (() => Promise<LocalAICheckOllamaResult>) | undefined
+let invokeOllamaConfigure: ((payload: { model: string, baseUrl?: string }) => Promise<LocalAIServiceStatus>) | undefined
 let invokeStop: ((payload: { serviceId: string }) => Promise<LocalAIServiceStatus>) | undefined
 let invokeGetStatus: (() => Promise<LocalAIStatusResult>) | undefined
-let llamaStatusPollTimer: ReturnType<typeof setInterval> | undefined
+let ollamaStatusPollTimer: ReturnType<typeof setInterval> | undefined
 
 if (isElectron) {
   const { context } = createContext((window as any).electron.ipcRenderer)
-  invokeLlamaCheck = defineInvoke(context, localAICheckLlamaEventa)
-  invokeLlamaConfigure = defineInvoke(context, localAIConfigureLlamaEventa)
+  invokeOllamaCheck = defineInvoke(context, localAICheckOllamaEventa)
+  invokeOllamaConfigure = defineInvoke(context, localAIConfigureOllamaEventa)
   invokeStop = defineInvoke(context, localAIStopEventa)
   invokeGetStatus = defineInvoke(context, localAIGetStatusEventa)
 }
 
-const isLlamaServiceRunning = computed(() => llamaServiceStatus.value?.state === 'running')
-const isLlamaServiceStarting = computed(() => llamaServiceStatus.value?.state === 'starting')
-const showLlamaServerControls = computed(() => activeProvider.value === 'llama-cpp-local' && isElectron)
+const isOllamaServiceRunning = computed(() => ollamaServiceStatus.value?.state === 'running')
+const isOllamaServiceStarting = computed(() => ollamaServiceStatus.value?.state === 'starting')
+const showOllamaControls = computed(() => activeProvider.value === 'ollama-local' && isElectron)
 
-async function refreshLlamaStatus() {
+async function refreshOllamaStatus() {
   if (!invokeGetStatus)
     return
   try {
     const result = await invokeGetStatus()
-    llamaServiceStatus.value = result.services.find(s => s.serviceId === 'llama-server') ?? null
+    ollamaServiceStatus.value = result.services.find(s => s.serviceId === 'ollama') ?? null
   }
   catch (err) {
-    console.warn('[Consciousness] Failed to get llama-server status:', err)
+    console.warn('[Consciousness] Failed to get Ollama status:', err)
   }
 }
 
-async function checkLlamaEnv() {
-  if (!invokeLlamaCheck)
+async function checkOllamaEnv() {
+  if (!invokeOllamaCheck)
     return
-  isCheckingLlama.value = true
+  isCheckingOllama.value = true
   try {
-    llamaCheck.value = await invokeLlamaCheck()
+    ollamaCheck.value = await invokeOllamaCheck()
   }
   catch (err) {
-    console.warn('[Consciousness] Failed to check llama-server:', err)
+    console.warn('[Consciousness] Failed to check Ollama:', err)
   }
   finally {
-    isCheckingLlama.value = false
+    isCheckingOllama.value = false
   }
 }
 
-async function handleStartLlamaService() {
-  if (!invokeLlamaConfigure)
+async function handleConnectOllama() {
+  if (!invokeOllamaConfigure)
     return
-  if (!llamaConfig.modelPath.trim()) {
-    llamaError.value = t('settings.pages.modules.consciousness.sections.section.local-llm.error-no-model-path', 'Model path is required')
-    return
-  }
-  llamaError.value = null
-  isTogglingLlamaService.value = true
+  ollamaError.value = null
+  isTogglingOllamaService.value = true
   try {
-    llamaServiceStatus.value = await invokeLlamaConfigure({
-      modelPath: llamaConfig.modelPath,
-      port: llamaConfig.port,
-      contextLength: llamaConfig.contextLength,
-      gpuLayers: llamaConfig.gpuLayers,
-    })
-    // Sync provider baseUrl with configured port
-    syncLlamaBaseUrl()
+    ollamaServiceStatus.value = await invokeOllamaConfigure({ model: 'qwen3:4b' })
   }
   catch (err) {
-    llamaError.value = errorMessageFrom(err) ?? 'Failed to start llama-server'
-    console.error('[Consciousness] Failed to start llama-server:', err)
+    ollamaError.value = errorMessageFrom(err) ?? 'Failed to connect to Ollama'
+    console.error('[Consciousness] Failed to connect to Ollama:', err)
   }
   finally {
-    isTogglingLlamaService.value = false
+    isTogglingOllamaService.value = false
   }
 }
 
-async function handleStopLlamaService() {
+async function handleDisconnectOllama() {
   if (!invokeStop)
     return
-  llamaError.value = null
-  isTogglingLlamaService.value = true
+  ollamaError.value = null
+  isTogglingOllamaService.value = true
   try {
-    llamaServiceStatus.value = await invokeStop({ serviceId: 'llama-server' })
+    ollamaServiceStatus.value = await invokeStop({ serviceId: 'ollama' })
   }
   catch (err) {
-    llamaError.value = errorMessageFrom(err) ?? 'Failed to stop llama-server'
-    console.error('[Consciousness] Failed to stop llama-server:', err)
+    ollamaError.value = errorMessageFrom(err) ?? 'Failed to disconnect Ollama'
+    console.error('[Consciousness] Failed to disconnect Ollama:', err)
   }
   finally {
-    isTogglingLlamaService.value = false
+    isTogglingOllamaService.value = false
   }
-}
-
-function syncLlamaBaseUrl() {
-  ensureLlamaProvider()
-  providers.value['llama-cpp-local'].baseUrl = `http://localhost:${llamaConfig.port}/v1/`
 }
 
 watch(activeProvider, async (provider, oldProvider) => {
@@ -189,23 +142,23 @@ watch(activeProvider, async (provider, oldProvider) => {
 
   await consciousnessStore.loadModelsForProvider(provider)
 
-  // Start llama status polling when llama-cpp-local is selected
-  if (provider === 'llama-cpp-local' && isElectron) {
-    checkLlamaEnv()
-    refreshLlamaStatus()
-    if (!llamaStatusPollTimer) {
-      llamaStatusPollTimer = setInterval(refreshLlamaStatus, 3000)
+  // Start Ollama status polling when ollama-local is selected
+  if (provider === 'ollama-local' && isElectron) {
+    checkOllamaEnv()
+    refreshOllamaStatus()
+    if (!ollamaStatusPollTimer) {
+      ollamaStatusPollTimer = setInterval(refreshOllamaStatus, 3000)
     }
   }
-  else if (llamaStatusPollTimer) {
-    clearInterval(llamaStatusPollTimer)
-    llamaStatusPollTimer = undefined
+  else if (ollamaStatusPollTimer) {
+    clearInterval(ollamaStatusPollTimer)
+    ollamaStatusPollTimer = undefined
   }
 }, { immediate: true })
 
 onUnmounted(() => {
-  if (llamaStatusPollTimer)
-    clearInterval(llamaStatusPollTimer)
+  if (ollamaStatusPollTimer)
+    clearInterval(ollamaStatusPollTimer)
 })
 
 function updateCustomModelName(value: string) {
@@ -280,8 +233,8 @@ function handleProviderDeleted() {
           </div>
         </div>
 
-        <!-- llama-server controls (shown when llama-cpp-local is selected in Electron) -->
-        <div v-if="showLlamaServerControls" :class="['flex flex-col gap-3']">
+        <!-- Ollama controls (shown when ollama-local is selected in Electron) -->
+        <div v-if="showOllamaControls" :class="['flex flex-col gap-3']">
           <h2 :class="['text-lg text-neutral-500 md:text-2xl dark:text-neutral-500']">
             {{ t('settings.pages.modules.consciousness.sections.section.local-llm.title') }}
           </h2>
@@ -292,15 +245,18 @@ function handleProviderDeleted() {
               {{ t('settings.pages.modules.consciousness.sections.section.local-llm.env-check') }}
             </p>
             <div :class="['mt-1.5']">
-              <template v-if="isCheckingLlama">
+              <template v-if="isCheckingOllama">
                 <span :class="['text-neutral-500 dark:text-neutral-400']">
                   {{ t('settings.pages.modules.consciousness.sections.section.local-llm.checking') }}
                 </span>
               </template>
-              <template v-else-if="llamaCheck?.llamaServerFound">
+              <template v-else-if="ollamaCheck?.ollamaFound">
                 <span :class="['text-green-600 dark:text-green-400']">
-                  {{ t('settings.pages.modules.consciousness.sections.section.local-llm.env-ready', { version: llamaCheck.version ?? '' }) }}
+                  {{ t('settings.pages.modules.consciousness.sections.section.local-llm.env-ready', { version: ollamaCheck.version ?? '' }) }}
                 </span>
+                <div v-if="ollamaCheck.models?.length" :class="['mt-1 text-neutral-500 dark:text-neutral-400']">
+                  {{ t('settings.pages.modules.consciousness.sections.section.local-llm.available-models', 'Available models') }}: {{ ollamaCheck.models.join(', ') }}
+                </div>
               </template>
               <template v-else>
                 <span :class="['text-amber-600 dark:text-amber-400']">
@@ -310,67 +266,40 @@ function handleProviderDeleted() {
             </div>
           </div>
 
-          <!-- Model configuration -->
-          <FieldInput
-            v-model="llamaConfig.modelPath"
-            :label="t('settings.pages.modules.consciousness.sections.section.local-llm.model-path-label')"
-            placeholder="/path/to/model.gguf"
-          />
-          <div :class="['grid grid-cols-3 gap-3']">
-            <FieldInput
-              v-model.number="llamaConfig.port"
-              :label="t('settings.pages.modules.consciousness.sections.section.local-llm.port-label')"
-              type="number"
-              placeholder="8080"
-            />
-            <FieldInput
-              v-model.number="llamaConfig.contextLength"
-              :label="t('settings.pages.modules.consciousness.sections.section.local-llm.context-length-label')"
-              type="number"
-              placeholder="2048"
-            />
-            <FieldInput
-              v-model.number="llamaConfig.gpuLayers"
-              :label="t('settings.pages.modules.consciousness.sections.section.local-llm.gpu-layers-label')"
-              type="number"
-              placeholder="-1"
-            />
-          </div>
-
           <!-- Service status and controls -->
           <div
             :class="['rounded-lg border p-3', {
-              'border-green-200/80 bg-green-50/60 dark:border-green-700/40 dark:bg-green-900/20': isLlamaServiceRunning,
-              'border-amber-200/80 bg-amber-50/60 dark:border-amber-700/40 dark:bg-amber-900/20': isLlamaServiceStarting,
-              'border-neutral-200/80 bg-neutral-50/60 dark:border-neutral-700/40 dark:bg-neutral-800/40': !isLlamaServiceRunning && !isLlamaServiceStarting,
+              'border-green-200/80 bg-green-50/60 dark:border-green-700/40 dark:bg-green-900/20': isOllamaServiceRunning,
+              'border-amber-200/80 bg-amber-50/60 dark:border-amber-700/40 dark:bg-amber-900/20': isOllamaServiceStarting,
+              'border-neutral-200/80 bg-neutral-50/60 dark:border-neutral-700/40 dark:bg-neutral-800/40': !isOllamaServiceRunning && !isOllamaServiceStarting,
             }]"
           >
             <div :class="['flex items-center justify-between']">
               <div :class="['flex items-center gap-2']">
                 <span
                   :class="['inline-block h-2 w-2 rounded-full', {
-                    'bg-green-500': isLlamaServiceRunning,
-                    'bg-amber-500 animate-pulse': isLlamaServiceStarting,
-                    'bg-red-500': llamaServiceStatus?.state === 'error',
-                    'bg-neutral-400': !llamaServiceStatus || llamaServiceStatus.state === 'stopped',
+                    'bg-green-500': isOllamaServiceRunning,
+                    'bg-amber-500 animate-pulse': isOllamaServiceStarting,
+                    'bg-red-500': ollamaServiceStatus?.state === 'error',
+                    'bg-neutral-400': !ollamaServiceStatus || ollamaServiceStatus.state === 'stopped',
                   }]"
                 />
                 <span
                   :class="['text-sm font-medium', {
-                    'text-green-700 dark:text-green-300': isLlamaServiceRunning,
-                    'text-amber-700 dark:text-amber-300': isLlamaServiceStarting,
-                    'text-red-700 dark:text-red-300': llamaServiceStatus?.state === 'error',
-                    'text-neutral-600 dark:text-neutral-400': !llamaServiceStatus || llamaServiceStatus.state === 'stopped',
+                    'text-green-700 dark:text-green-300': isOllamaServiceRunning,
+                    'text-amber-700 dark:text-amber-300': isOllamaServiceStarting,
+                    'text-red-700 dark:text-red-300': ollamaServiceStatus?.state === 'error',
+                    'text-neutral-600 dark:text-neutral-400': !ollamaServiceStatus || ollamaServiceStatus.state === 'stopped',
                   }]"
                 >
-                  <template v-if="isLlamaServiceRunning">
+                  <template v-if="isOllamaServiceRunning">
                     {{ t('settings.pages.modules.consciousness.sections.section.local-llm.service-running') }}
                   </template>
-                  <template v-else-if="isLlamaServiceStarting">
+                  <template v-else-if="isOllamaServiceStarting">
                     {{ t('settings.pages.modules.consciousness.sections.section.local-llm.service-starting') }}
                   </template>
-                  <template v-else-if="llamaServiceStatus?.state === 'error'">
-                    {{ llamaServiceStatus.lastError ?? t('settings.pages.modules.consciousness.sections.section.local-llm.service-error') }}
+                  <template v-else-if="ollamaServiceStatus?.state === 'error'">
+                    {{ ollamaServiceStatus.lastError ?? t('settings.pages.modules.consciousness.sections.section.local-llm.service-error') }}
                   </template>
                   <template v-else>
                     {{ t('settings.pages.modules.consciousness.sections.section.local-llm.service-stopped') }}
@@ -379,15 +308,15 @@ function handleProviderDeleted() {
               </div>
 
               <Button
-                v-if="!isLlamaServiceStarting"
-                :disabled="isLlamaServiceRunning
-                  ? isTogglingLlamaService
-                  : isTogglingLlamaService || isCheckingLlama || !llamaCheck?.llamaServerFound || !llamaConfig.modelPath.trim()"
+                v-if="!isOllamaServiceStarting"
+                :disabled="isOllamaServiceRunning
+                  ? isTogglingOllamaService
+                  : isTogglingOllamaService || isCheckingOllama || !ollamaCheck?.ollamaFound"
                 size="sm"
-                :variant="isLlamaServiceRunning ? 'secondary' : 'primary'"
-                @click="isLlamaServiceRunning ? handleStopLlamaService() : handleStartLlamaService()"
+                :variant="isOllamaServiceRunning ? 'secondary' : 'primary'"
+                @click="isOllamaServiceRunning ? handleDisconnectOllama() : handleConnectOllama()"
               >
-                {{ isLlamaServiceRunning
+                {{ isOllamaServiceRunning
                   ? t('settings.pages.modules.consciousness.sections.section.local-llm.stop-service')
                   : t('settings.pages.modules.consciousness.sections.section.local-llm.start-service')
                 }}
@@ -396,26 +325,26 @@ function handleProviderDeleted() {
           </div>
 
           <!-- Error display -->
-          <Alert v-if="llamaError" type="error">
+          <Alert v-if="ollamaError" type="error">
             <template #title>
               {{ t('settings.pages.modules.consciousness.sections.section.local-llm.service-error') }}
             </template>
             <template #content>
-              {{ llamaError }}
+              {{ ollamaError }}
             </template>
           </Alert>
 
-          <!-- Setup instructions (when llama-server not found) -->
+          <!-- Setup instructions (when Ollama not found) -->
           <div
-            v-if="llamaCheck && !llamaCheck.llamaServerFound"
+            v-if="ollamaCheck && !ollamaCheck.ollamaFound"
             :class="['rounded-lg bg-neutral-100/60 p-3 text-xs text-neutral-500 dark:bg-neutral-800/40 dark:text-neutral-400']"
           >
             <p :class="['font-medium']">
               {{ t('settings.pages.modules.consciousness.sections.section.local-llm.setup-instructions') }}
             </p>
             <ol :class="['mt-1.5 list-inside list-decimal space-y-1']">
-              <li><code>brew install llama.cpp</code></li>
-              <li>{{ t('settings.pages.modules.consciousness.sections.section.local-llm.download-model') }}</li>
+              <li>Install Ollama from <code>ollama.com</code></li>
+              <li><code>ollama pull qwen3:4b</code></li>
             </ol>
           </div>
         </div>

@@ -5,6 +5,7 @@ import process from 'node:process'
 import { execFile, spawn as nodeSpawn } from 'node:child_process'
 import { existsSync, mkdirSync } from 'node:fs'
 import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 const FUNASR_MODELS = [
   'iic/SenseVoiceSmall',
@@ -15,12 +16,21 @@ const FUNASR_MODELS = [
 // Using TUNA mirror which is one of the most reliable Chinese PyPI mirrors.
 const PYPI_MIRROR = 'https://pypi.tuna.tsinghua.edu.cn/simple'
 
+// NOTICE: PyTorch CUDA wheels are ~2.6 GB and must come from a dedicated wheel index.
+// SJTU mirrors the official PyTorch wheel repository and is fast within China.
+// Regular dependencies (sympy, filelock, etc.) still come from PYPI_MIRROR via --extra-index-url.
+const PYTORCH_CUDA_INDEX = 'https://mirror.sjtu.edu.cn/pytorch-wheels/cu126'
+
 const MIN_PYTHON_VERSION = [3, 10] as const
+// NOTICE: ML packages (numpy, torch, funasr, etc.) lag behind Python releases.
+// Python 3.14+ lacks prebuilt wheels for most of the stack, causing source builds
+// that require a C compiler. Cap at 3.12 until the ecosystem catches up.
+const MAX_PYTHON_VERSION = [3, 12] as const
 const PYTHON_VERSION_RE = /Python\s+(\d+)\.(\d+)/i
 
 // NOTICE: setup.ts runs from the service directory via pnpm postinstall.
 // We use the script's own location to reliably locate the service root.
-const SCRIPT_DIR = typeof __dirname !== 'undefined' ? __dirname : dirname(new URL(import.meta.url).pathname)
+const SCRIPT_DIR = typeof __dirname !== 'undefined' ? __dirname : dirname(fileURLToPath(import.meta.url))
 const SERVICE_ROOT = SCRIPT_DIR
 const VENV_DIR = join(SERVICE_ROOT, '.venv')
 
@@ -55,9 +65,9 @@ function spawn(command: string, args: string[]): Promise<void> {
 
 // --- Python venv ---
 
-/** Find a system Python >= MIN_PYTHON_VERSION. */
+/** Find a system Python >= MIN_PYTHON_VERSION and <= MAX_PYTHON_VERSION. */
 async function findSystemPython(): Promise<string> {
-  for (const candidate of ['python3.14', 'python3.13', 'python3.12', 'python3.11', 'python3.10', 'python3', 'python']) {
+  for (const candidate of ['python3.12', 'python3.11', 'python3.10', 'python3.13', 'python3', 'python']) {
     try {
       const { stdout } = await exec(candidate, ['--version'])
       const match = stdout.match(PYTHON_VERSION_RE)
@@ -68,6 +78,10 @@ async function findSystemPython(): Promise<string> {
         console.warn(`[setup] ${candidate} is ${stdout.trim()}, need >= ${MIN_PYTHON_VERSION.join('.')}. Skipping.`)
         continue
       }
+      if (major > MAX_PYTHON_VERSION[0] || (major === MAX_PYTHON_VERSION[0] && minor > MAX_PYTHON_VERSION[1])) {
+        console.warn(`[setup] ${candidate} is ${stdout.trim()}, need <= ${MAX_PYTHON_VERSION.join('.')} (ML packages lack wheels for newer versions). Skipping.`)
+        continue
+      }
       console.log(`[setup] Found ${candidate}: ${stdout.trim()}`)
       return candidate
     }
@@ -76,8 +90,8 @@ async function findSystemPython(): Promise<string> {
     }
   }
 
-  console.error(`[setup] Python >= ${MIN_PYTHON_VERSION.join('.')} is required but not found.`)
-  console.error('[setup] Please install Python 3.10+ and ensure it is on your PATH.')
+  console.error(`[setup] Python ${MIN_PYTHON_VERSION.join('.')}-${MAX_PYTHON_VERSION.join('.')} is required but not found.`)
+  console.error(`[setup] Please install Python 3.10-3.12 and ensure it is on your PATH.`)
   console.error('[setup] macOS: brew install python@3.12')
   process.exit(1)
 }
@@ -107,6 +121,60 @@ async function ensureVenv(): Promise<string> {
   await spawn(venvPython, ['-m', 'pip', 'install', '--upgrade', 'pip', '-i', PYPI_MIRROR])
 
   return venvPython
+}
+
+// --- GPU detection ---
+
+/** Check whether an NVIDIA GPU is present by probing nvidia-smi. */
+async function detectCuda(): Promise<boolean> {
+  try {
+    const { stdout } = await exec('nvidia-smi', ['--query-gpu=name', '--format=csv,noheader'])
+    if (stdout.trim()) {
+      console.log(`[setup] NVIDIA GPU detected: ${stdout.trim().split('\n')[0]}`)
+      return true
+    }
+  }
+  catch {
+    // nvidia-smi not found or failed
+  }
+  console.log('[setup] No NVIDIA GPU detected, will install CPU-only PyTorch.')
+  return false
+}
+
+// --- PyTorch install ---
+
+/**
+ * Install torch + torchaudio with the correct index URL depending on GPU availability.
+ * Skips if the expected variant (CUDA or CPU) is already installed.
+ */
+async function installTorch(python: string, hasCuda: boolean): Promise<void> {
+  // Check if torch is already installed with the expected CUDA support
+  try {
+    const { stdout } = await exec(python, ['-c', 'import torch; print(torch.cuda.is_available())'])
+    const cudaAvailable = stdout.trim() === 'True'
+    if (hasCuda === cudaAvailable) {
+      console.log(`[setup] PyTorch already installed (CUDA=${cudaAvailable}), skipping.`)
+      return
+    }
+    // Wrong variant installed (e.g. CPU-only but CUDA GPU present) → reinstall
+    console.log(`[setup] PyTorch installed but CUDA=${cudaAvailable}, need CUDA=${hasCuda}. Reinstalling...`)
+    await spawn(python, ['-m', 'pip', 'uninstall', '-y', 'torch', 'torchaudio'])
+  }
+  catch {
+    // torch not installed at all
+  }
+
+  if (hasCuda) {
+    console.log('[setup] Installing PyTorch with CUDA support (cu126) from SJTU mirror...')
+    // NOTICE: PyTorch CUDA wheels live in a dedicated index, but their transitive
+    // dependencies (sympy, filelock, etc.) must come from a regular PyPI mirror.
+    await spawn(python, ['-m', 'pip', 'install', '--progress-bar', 'on', '--index-url', PYTORCH_CUDA_INDEX, '--extra-index-url', PYPI_MIRROR, 'torch', 'torchaudio'])
+  }
+  else {
+    console.log('[setup] Installing PyTorch (CPU) from TUNA mirror...')
+    await spawn(python, ['-m', 'pip', 'install', '--progress-bar', 'on', '-i', PYPI_MIRROR, 'torch', 'torchaudio'])
+  }
+  console.log('[setup] PyTorch installation completed.')
 }
 
 // --- pip install ---
@@ -277,7 +345,11 @@ async function main() {
   // Create a dedicated venv so pip installs don't hit PEP 668 restrictions
   const python = await ensureVenv()
 
-  // Install all Python dependencies from requirements.txt
+  // Detect GPU and install PyTorch with the appropriate variant (CUDA or CPU)
+  const hasCuda = await detectCuda()
+  await installTorch(python, hasCuda)
+
+  // Install remaining Python dependencies from requirements.txt
   await pipInstall(python)
 
   // Download FunASR models

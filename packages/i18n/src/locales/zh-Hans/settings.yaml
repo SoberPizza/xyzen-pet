@@ -483,6 +483,30 @@ pages:
       title: 听觉
       sections:
         section:
+          audio-input-source:
+            title: 音频输入源
+            description: 选择音频输入来源
+            microphone: 麦克风
+            microphone-description: 使用计算机麦克风和软件 VAD
+            esp32: ESP32 设备
+            esp32-description: 使用小智 ESP32 硬件设备（内置 VAD）
+          esp32:
+            device-url: 设备地址
+            device-url-description: ESP32 设备的 WebSocket 地址
+            device-url-placeholder: 'ws://192.168.31.214:8080/ws'
+            device-token: 设备令牌
+            device-token-description: 设备的认证令牌
+            protocol-version: 协议版本
+            connect: 连接
+            disconnect: 断开连接
+            connecting: 正在连接...
+            status:
+              disconnected: 未连接
+              connecting: 正在连接...
+              connected: 已连接（等待设备）
+              active: 通道已建立
+              error: 连接错误
+            vad-notice: 使用 ESP32 内置 VAD（软件 VAD 已禁用）
           provider-selection:
             description: 选择合适的语音转文本的服务来源
           confidence-threshold:

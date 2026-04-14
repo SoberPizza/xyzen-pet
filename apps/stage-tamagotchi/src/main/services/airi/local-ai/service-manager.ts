@@ -82,6 +82,22 @@ export function createLocalAIServiceManager(): LocalAIServiceManager {
     entry.state = 'starting'
     entry.lastError = undefined
 
+    // External service (e.g. Ollama) — no process to spawn, only check readiness
+    if (!entry.config.command) {
+      log.withFields({ serviceId }).log('Checking external service readiness')
+      const ready = await waitForReadiness(entry)
+      if (ready && entry.state === 'starting') {
+        entry.state = 'running'
+        log.withFields({ serviceId }).log('External service is ready')
+      }
+      else if (entry.state === 'starting') {
+        entry.state = 'error'
+        entry.lastError = 'External service readiness probe timed out'
+        log.withFields({ serviceId }).warn('External service readiness probe timed out')
+      }
+      return
+    }
+
     log.withFields({ serviceId, command: entry.config.command, args: entry.config.args }).log('Starting local AI service')
 
     const child = spawn(entry.config.command, entry.config.args, {

@@ -3,6 +3,11 @@
   "type": "module",
   "private": true,
   "description": "Bridge between xiaozhi ESP32 device and AIRI services",
+  "exports": {
+    ".": "./src/index.ts",
+    "./bridge": "./src/bridge.ts",
+    "./protocol": "./src/protocol.ts"
+  },
   "scripts": {
     "start": "tsx --env-file=.env --env-file-if-exists=.env.local src/index.ts",
     "dev": "tsx --watch --env-file=.env --env-file-if-exists=.env.local src/index.ts",

@@ -3,9 +3,9 @@ import type { createContext } from '@moeru/eventa/adapters/electron/main'
 import { useLogg } from '@guiiai/logg'
 import { defineInvokeHandler } from '@moeru/eventa'
 import {
-  localAICheckLlamaEventa,
+  localAICheckOllamaEventa,
   localAICheckPythonEventa,
-  localAIConfigureLlamaEventa,
+  localAIConfigureOllamaEventa,
   localAIGetStatusEventa,
   localAIStartEventa,
   localAIStopEventa,
@@ -13,8 +13,8 @@ import {
 
 import { onAppBeforeQuit } from '../../../libs/bootkit/lifecycle'
 import { detectGpu } from './gpu-detection'
-import { checkLlama, createLlamaServerConfig, getDefaultLlamaConfig } from './llama-service'
 import { selectProfile } from './model-profiles'
+import { checkOllama, createOllamaServiceConfig, ensureOllamaModel, getOllamaServiceInfo } from './ollama-service'
 import { checkPython, createCosyvoiceService, createFunasrService } from './python-services'
 import { createLocalAIServiceManager } from './service-manager'
 
@@ -36,7 +36,7 @@ export async function setupLocalAIServiceManager() {
     await manager.stopAll()
   })
 
-  // Auto-start services in the background. Failure is non-fatal (e.g. Python not installed).
+  // Auto-start Python services in the background. Failure is non-fatal.
   manager.start('funasr').catch((err) => {
     log.withError(err).warn('Auto-start of FunASR service failed (non-fatal)')
   })
@@ -44,16 +44,30 @@ export async function setupLocalAIServiceManager() {
     log.withError(err).warn('Auto-start of CosyVoice TTS service failed (non-fatal)')
   })
 
-  // Auto-start llama-server with profile-selected model configuration
-  const defaultLlamaConfig = getDefaultLlamaConfig(profile)
-  if (defaultLlamaConfig) {
-    manager.registerService(defaultLlamaConfig)
-    manager.start('llama-server').catch((err) => {
-      log.withError(err).warn('Auto-start of llama-server failed (non-fatal)')
+  // Register Ollama as an external service for status tracking
+  const ollamaInfo = getOllamaServiceInfo(profile)
+  const ollamaConfig = createOllamaServiceConfig({ model: ollamaInfo.model, baseUrl: ollamaInfo.baseUrl })
+  manager.registerService(ollamaConfig)
+
+  // Check Ollama availability and ensure the model is pulled
+  const ollamaStatus = await checkOllama(ollamaInfo.baseUrl)
+  if (ollamaStatus.ollamaFound) {
+    log.withFields({ version: ollamaStatus.version, models: ollamaStatus.models }).log('Ollama detected')
+    ensureOllamaModel(ollamaInfo.model, ollamaInfo.baseUrl).then((ok) => {
+      if (ok) {
+        manager.start('ollama').catch((err) => {
+          log.withError(err).warn('Ollama readiness check failed (non-fatal)')
+        })
+      }
+      else {
+        log.warn(`Failed to ensure Ollama model ${ollamaInfo.model} is available`)
+      }
+    }).catch((err) => {
+      log.withError(err).warn('Failed to pull Ollama model (non-fatal)')
     })
   }
   else {
-    log.warn('GGUF model not found in HuggingFace cache, skipping llama-server auto-start')
+    log.warn('Ollama not detected, local LLM will not be available')
   }
 
   return manager
@@ -81,12 +95,12 @@ export function createLocalAIService(params: {
     return checkPython()
   })
 
-  defineInvokeHandler(params.context, localAICheckLlamaEventa, async () => {
-    return checkLlama()
+  defineInvokeHandler(params.context, localAICheckOllamaEventa, async () => {
+    return checkOllama()
   })
 
-  defineInvokeHandler(params.context, localAIConfigureLlamaEventa, async (config) => {
-    const serviceConfig = createLlamaServerConfig(config)
+  defineInvokeHandler(params.context, localAIConfigureOllamaEventa, async (config) => {
+    const serviceConfig = createOllamaServiceConfig(config)
     params.manager.registerService(serviceConfig)
     await params.manager.start(serviceConfig.id)
     return params.manager.getStatus(serviceConfig.id)

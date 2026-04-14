@@ -23,13 +23,18 @@ parser.add_argument('--port', type=int, default=10097)
 parser.add_argument('--device', type=str, default='cpu')
 args = parser.parse_args()
 
-print(f'[cosyvoice-server] Loading CosyVoice-300M-SFT device={args.device}', flush=True)
+import torch  # noqa: E402
+
+use_cuda = args.device == 'cuda' and torch.cuda.is_available()
+use_fp16 = use_cuda
+
+print(f'[cosyvoice-server] Loading CosyVoice-300M-SFT device={args.device}, cuda={use_cuda}, fp16={use_fp16}', flush=True)
 
 import numpy as np  # noqa: E402
 import soundfile as sf  # noqa: E402
 from cosyvoice.cli.cosyvoice import CosyVoice  # noqa: E402
 
-cosyvoice = CosyVoice('iic/CosyVoice-300M-SFT', load_jit=False, fp16=False)
+cosyvoice = CosyVoice('iic/CosyVoice-300M-SFT', load_jit=False, fp16=use_fp16)
 
 print('[cosyvoice-server] Model loaded', flush=True)
 

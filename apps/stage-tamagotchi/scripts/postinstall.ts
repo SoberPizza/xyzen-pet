@@ -8,6 +8,7 @@ function spawn(command: string, args: string[]): Promise<void> {
     const child = nodeSpawn(command, args, {
       stdio: ['ignore', 'inherit', 'inherit'],
       timeout: 600_000,
+      shell: process.platform === 'win32',
     })
     child.on('error', reject)
     child.on('close', (code) => {

@@ -1,6 +1,7 @@
 # Core ML dependencies
-torch
-torchaudio
+# NOTICE: torch and torchaudio are installed separately by setup.ts with GPU-aware
+# index URLs (CUDA wheels from Aliyun mirror, CPU wheels from TUNA mirror).
+# Do NOT add them back here.
 
 # FunASR (speech recognition)
 funasr

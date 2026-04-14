@@ -504,6 +504,30 @@ pages:
       title: Hearing
       sections:
         section:
+          audio-input-source:
+            title: Audio Input Source
+            description: Choose where audio input comes from
+            microphone: Microphone
+            microphone-description: Use your computer's microphone with software VAD
+            esp32: ESP32 Device
+            esp32-description: Use Xiaozhi ESP32 hardware with built-in VAD
+          esp32:
+            device-url: Device URL
+            device-url-description: WebSocket address of the ESP32 device
+            device-url-placeholder: 'ws://192.168.31.214:8080/ws'
+            device-token: Device Token
+            device-token-description: Authentication token for the device
+            protocol-version: Protocol Version
+            connect: Connect
+            disconnect: Disconnect
+            connecting: Connecting...
+            status:
+              disconnected: Disconnected
+              connecting: Connecting...
+              connected: Connected (waiting for device)
+              active: Active
+              error: Connection Error
+            vad-notice: Using ESP32 built-in VAD (software VAD disabled)
           provider-selection:
             description: Select the suitable speech recognition provider
           confidence-threshold:

@@ -23,18 +23,16 @@ export const localAIStopEventa = defineInvokeEventa<LocalAIServiceStatus, { serv
 export const localAIGetStatusEventa = defineInvokeEventa<LocalAIStatusResult>('eventa:invoke:electron:local-ai:get-status')
 export const localAICheckPythonEventa = defineInvokeEventa<LocalAICheckPythonResult>('eventa:invoke:electron:local-ai:check-python')
 
-export interface LocalAICheckLlamaResult {
-  llamaServerFound: boolean
-  llamaServerPath?: string
+export interface LocalAICheckOllamaResult {
+  ollamaFound: boolean
   version?: string
+  models?: string[]
 }
 
-export interface LocalAILlamaServerConfig {
-  modelPath: string
-  port: number
-  contextLength: number
-  gpuLayers: number
+export interface LocalAIOllamaConfig {
+  model: string
+  baseUrl?: string
 }
 
-export const localAICheckLlamaEventa = defineInvokeEventa<LocalAICheckLlamaResult>('eventa:invoke:electron:local-ai:check-llama')
-export const localAIConfigureLlamaEventa = defineInvokeEventa<LocalAIServiceStatus, LocalAILlamaServerConfig>('eventa:invoke:electron:local-ai:configure-llama')
+export const localAICheckOllamaEventa = defineInvokeEventa<LocalAICheckOllamaResult>('eventa:invoke:electron:local-ai:check-ollama')
+export const localAIConfigureOllamaEventa = defineInvokeEventa<LocalAIServiceStatus, LocalAIOllamaConfig>('eventa:invoke:electron:local-ai:configure-ollama')

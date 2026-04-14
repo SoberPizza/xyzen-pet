@@ -56,16 +56,20 @@ function resolveScriptPath(scriptName: string): string {
 // Falls back to system `python3` if the venv doesn't exist.
 function getVenvPython(): string {
   const monorepoRoot = findMonorepoRoot()
+  // NOTICE: On Windows, Node.js spawn() without shell requires the .exe extension
+  // to resolve the executable. Without it the process silently fails or picks up
+  // a different Python from PATH.
+  const venvSubpath = process.platform === 'win32' ? ['Scripts', 'python.exe'] : ['bin', 'python']
   const candidates = [
-    join(monorepoRoot, 'services', 'local-ai-python', '.venv', 'bin', 'python'),
+    join(monorepoRoot, 'services', 'local-ai-python', '.venv', ...venvSubpath),
     // Legacy fallback
-    join(app.getAppPath(), '.venv', 'bin', 'python'),
+    join(app.getAppPath(), '.venv', ...venvSubpath),
   ]
   for (const candidate of candidates) {
     if (existsSync(candidate))
       return candidate
   }
-  return 'python3'
+  return process.platform === 'win32' ? 'python' : 'python3'
 }
 
 // NOTICE: The official CosyVoice (FunAudioLLM) is cloned into
@@ -112,7 +116,7 @@ export function createCosyvoiceService(profile: ModelProfile): LocalAIServiceCon
       const existing = process.env.PYTHONPATH || ''
       if (existing)
         paths.push(existing)
-      return { PYTHONPATH: paths.join(':') }
+      return { PYTHONPATH: paths.join(process.platform === 'win32' ? ';' : ':') }
     },
   }
 }
@@ -122,14 +126,14 @@ export function createFunasrService(profile: ModelProfile): LocalAIServiceConfig
     id: 'funasr',
     get command() { return getVenvPython() },
     get args() {
-      // NOTICE: --vad-model is empty to disable server-side FSMN VAD.
-      // Client-side Silero VAD gates audio so only speech segments reach the server.
+      // NOTICE: Server-side FSMN VAD is disabled (--vad-model defaults to '' in the
+      // server). Client-side Silero VAD gates audio so only speech segments reach
+      // the server. We omit --vad-model entirely because Node.js spawn() on Windows
+      // drops empty-string arguments, causing argparse to misparse the command line.
       return [
         resolveScriptPath('funasr-server.py'),
         '--model',
         profile.funasr.model,
-        '--vad-model',
-        '',
         '--device',
         profile.funasr.device,
         '--port',

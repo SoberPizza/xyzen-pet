@@ -29,7 +29,9 @@ export interface BridgeOptions {
 }
 
 export interface BridgeEvents {
-  /** Device connected and hello received */
+  /** WebSocket connection established (token accepted, ready for hello handshake) */
+  'ws-connected': []
+  /** Device hello received and audio channel opened */
   'connected': [deviceHello: DeviceHello]
   /** WebSocket closed */
   'disconnected': [code: number, reason: string]
@@ -90,7 +92,8 @@ export class XiaozhiBridge extends EventEmitter<BridgeEvents> {
     this.ws = ws
 
     ws.on('open', () => {
-      console.log('[bridge] WebSocket connected, waiting for device hello...')
+      console.log('[bridge] WebSocket connected, waiting for device to start listening...')
+      this.emit('ws-connected')
     })
 
     ws.on('message', (data: Buffer, isBinary: boolean) => {

@@ -4,9 +4,12 @@ import { watch } from 'vue'
 
 import { useAudioDevice } from '../../composables/audio'
 
+export type AudioInputSource = 'microphone' | 'esp32'
+
 export const useSettingsAudioDevice = defineStore('settings-audio-devices', () => {
   const { audioInputs, deviceConstraints, selectedAudioInput: selectedAudioInputNonPersist, startStream, stopStream, stream, askPermission } = useAudioDevice()
 
+  const audioInputSource = useLocalStorageManualReset<AudioInputSource>('settings/audio/input-source', 'microphone')
   const selectedAudioInputPersist = useLocalStorageManualReset<string>('settings/audio/input', selectedAudioInputNonPersist.value)
   const selectedAudioInputEnabledPersist = useLocalStorageManualReset<boolean>('settings/audio/input/enabled', false)
 
@@ -36,6 +39,7 @@ export const useSettingsAudioDevice = defineStore('settings-audio-devices', () =
   }
 
   function resetState() {
+    audioInputSource.reset()
     selectedAudioInputPersist.reset()
     selectedAudioInputNonPersist.value = ''
     selectedAudioInputEnabledPersist.reset()
@@ -43,6 +47,7 @@ export const useSettingsAudioDevice = defineStore('settings-audio-devices', () =
   }
 
   return {
+    audioInputSource,
     audioInputs,
     deviceConstraints,
     selectedAudioInput: selectedAudioInputPersist,

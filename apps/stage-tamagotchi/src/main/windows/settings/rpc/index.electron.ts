@@ -15,6 +15,7 @@ import { ipcMain } from 'electron'
 
 import { electronOpenDevtoolsWindow, electronOpenSettingsDevtools } from '../../../../shared/eventa'
 import { createAuthService } from '../../../services/airi/auth'
+import { createESP32BridgeService } from '../../../services/airi/esp32-bridge'
 import { createLocalAIService } from '../../../services/airi/local-ai'
 import { createMcpServersService } from '../../../services/airi/mcp-servers'
 import { createWidgetsService } from '../../../services/airi/widgets'
@@ -45,6 +46,7 @@ export async function setupSettingsWindowInvokes(params: {
   createAutoUpdaterService({ context, window: params.settingsWindow, service: params.autoUpdater })
   createMcpServersService({ context, manager: params.mcpStdioManager })
   createLocalAIService({ context, manager: params.localAIManager })
+  createESP32BridgeService({ context })
   createAuthService({ context, window: params.settingsWindow, windowAuthManager: params.windowAuthManager })
 
   defineInvokeHandler(context, electronOpenSettingsDevtools, async () => params.settingsWindow.webContents.openDevTools({ mode: 'detach' }))

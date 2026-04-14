@@ -18,6 +18,7 @@
     ".": "./src/index.ts",
     "./auth": "./src/auth/index.ts",
     "./beat-sync": "./src/beat-sync/index.ts",
+    "./esp32-bridge": "./src/esp32-bridge/index.ts",
     "./local-ai": "./src/local-ai/index.ts",
     "./server-channel-qr": "./src/server-channel-qr.ts",
     "./electron-renderer": "./src/electron-renderer.d.ts",

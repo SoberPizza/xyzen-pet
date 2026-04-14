@@ -17,6 +17,7 @@ import { ipcMain } from 'electron'
 
 import { electronOpenChat, electronOpenMainDevtools, electronOpenSettings, noticeWindowEventa } from '../../../../shared/eventa'
 import { createAuthService } from '../../../services/airi/auth'
+import { createESP32BridgeService } from '../../../services/airi/esp32-bridge'
 import { createLocalAIService } from '../../../services/airi/local-ai'
 import { createMcpServersService } from '../../../services/airi/mcp-servers'
 import { createOnboardingService } from '../../../services/airi/onboarding'
@@ -51,6 +52,7 @@ export async function setupMainWindowElectronInvokes(params: {
   createAutoUpdaterService({ context, window: params.window, service: params.autoUpdater })
   createMcpServersService({ context, manager: params.mcpStdioManager })
   createLocalAIService({ context, manager: params.localAIManager })
+  createESP32BridgeService({ context })
   createOnboardingService({ context, onboardingWindowManager: params.onboardingWindowManager, mainWindow: params.window })
   createAuthService({ context, window: params.window, windowAuthManager: params.windowAuthManager })
 

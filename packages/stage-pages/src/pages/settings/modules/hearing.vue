@@ -1,14 +1,23 @@
 <script setup lang="ts">
+import type { ESP32BridgeStatus } from '@proj-airi/stage-shared/esp32-bridge'
+
 import workletUrl from '@proj-airi/stage-ui/workers/vad/process.worklet?worker&url'
 
+import { defineInvoke } from '@moeru/eventa'
+import { createContext } from '@moeru/eventa/adapters/electron/renderer'
+import { isElectronWindow } from '@proj-airi/stage-shared'
+import {
+  esp32BridgeConnectEventa,
+  esp32BridgeDisconnectEventa,
+} from '@proj-airi/stage-shared/esp32-bridge'
 import { AddProviderDialog, Alert, EditProviderDialog, ErrorContainer, LevelMeter, RadioCardManySelect, RadioCardSimple, TestDummyMarker, ThresholdMeter, TimeSeriesChart } from '@proj-airi/stage-ui/components'
-import { useAnalytics, useAudioAnalyzer, useAudioRecorder } from '@proj-airi/stage-ui/composables'
+import { useAnalytics, useAudioAnalyzer, useAudioRecorder, useESP32AudioInput } from '@proj-airi/stage-ui/composables'
 import { useVAD } from '@proj-airi/stage-ui/stores/ai/models/vad'
 import { useAudioContext } from '@proj-airi/stage-ui/stores/audio'
 import { useLocalAIServiceStatusStore } from '@proj-airi/stage-ui/stores/local-ai-service-status'
 import { CONFIDENCE_THRESHOLD_DISABLED, useHearingSpeechInputPipeline, useHearingStore } from '@proj-airi/stage-ui/stores/modules/hearing'
 import { useProvidersStore } from '@proj-airi/stage-ui/stores/providers'
-import { useSettingsAudioDevice } from '@proj-airi/stage-ui/stores/settings'
+import { useSettingsAudioDevice, useSettingsESP32Bridge } from '@proj-airi/stage-ui/stores/settings'
 import { Button, FieldCheckbox, FieldCombobox, FieldInput, FieldRange } from '@proj-airi/ui'
 import { until } from '@vueuse/core'
 import { storeToRefs } from 'pinia'
@@ -16,6 +25,56 @@ import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 const { t } = useI18n()
+
+// ESP32 bridge (Electron only)
+const isElectron = typeof window !== 'undefined' && isElectronWindow(window)
+const esp32Store = useSettingsESP32Bridge()
+const { deviceUrl: esp32DeviceUrl, deviceToken: esp32DeviceToken, protocolVersion: esp32ProtocolVersion, connectionStatus: esp32ConnectionStatus } = storeToRefs(esp32Store)
+const esp32AudioInput = useESP32AudioInput()
+const isConnectingESP32 = ref(false)
+
+let invokeESP32Connect: ((payload: { deviceUrl: string, deviceToken: string, protocolVersion: number }) => Promise<ESP32BridgeStatus>) | undefined
+let invokeESP32Disconnect: (() => Promise<ESP32BridgeStatus>) | undefined
+
+if (isElectron) {
+  const { context } = createContext((window as any).electron.ipcRenderer)
+  invokeESP32Connect = defineInvoke(context, esp32BridgeConnectEventa)
+  invokeESP32Disconnect = defineInvoke(context, esp32BridgeDisconnectEventa)
+}
+
+async function connectESP32() {
+  if (!invokeESP32Connect)
+    return
+  isConnectingESP32.value = true
+  try {
+    const status = await invokeESP32Connect({
+      deviceUrl: esp32DeviceUrl.value,
+      deviceToken: esp32DeviceToken.value,
+      protocolVersion: esp32ProtocolVersion.value,
+    })
+    esp32ConnectionStatus.value = status
+    esp32AudioInput.start()
+  }
+  catch (err) {
+    esp32ConnectionStatus.value = { state: 'error', lastError: err instanceof Error ? err.message : String(err) }
+  }
+  finally {
+    isConnectingESP32.value = false
+  }
+}
+
+async function disconnectESP32() {
+  if (!invokeESP32Disconnect)
+    return
+  try {
+    const status = await invokeESP32Disconnect()
+    esp32ConnectionStatus.value = status
+  }
+  catch (err) {
+    console.error('Failed to disconnect ESP32:', err)
+  }
+  esp32AudioInput.dispose()
+}
 
 const hearingStore = useHearingStore()
 const {
@@ -56,8 +115,10 @@ function handleTranscriptionProviderDeleted() {
     activeTranscriptionModel.value = ''
   }
 }
-const { stopStream, startStream } = useSettingsAudioDevice()
-const { audioInputs, selectedAudioInput, stream } = storeToRefs(useSettingsAudioDevice())
+const audioDeviceStore = useSettingsAudioDevice()
+const { stopStream, startStream } = audioDeviceStore
+const { audioInputSource, audioInputs, selectedAudioInput, stream } = storeToRefs(audioDeviceStore)
+const isESP32Source = computed(() => audioInputSource.value === 'esp32')
 const { startRecord, stopRecord, onStopRecord } = useAudioRecorder(stream)
 const { startAnalyzer, stopAnalyzer, onAnalyzerUpdate, volumeLevel } = useAudioAnalyzer()
 const { audioContext } = storeToRefs(useAudioContext())
@@ -121,6 +182,16 @@ async function handleSpeechStart() {
   if (isTestingSTT.value)
     return // Don't overwrite STT test session
 
+  // ESP32 mode: use ESP32 audio stream directly (VAD handled by hardware)
+  if (isESP32Source.value && supportsStreamInput.value) {
+    await transcribeForMediaStream(new MediaStream(), {
+      externalAudioStream: esp32AudioInput.audioStream.stream,
+      onSentenceEnd: monitoringOnSentenceEnd,
+      onSpeechEnd: monitoringOnSpeechEnd,
+    })
+    return
+  }
+
   if (shouldUseStreamInput.value && stream.value) {
     const useVADGating = supportsVADGatedInput.value
     if (useVADGating && !vadGatedStream) {
@@ -182,6 +253,11 @@ watch(isSpeechVAD, v => isSpeechVADRef.value = v)
 
 const isSpeechVolume = ref(false) // Volume-based speaking detection
 const isSpeech = computed(() => {
+  // When ESP32 is selected, use its hardware VAD
+  if (isESP32Source.value) {
+    return esp32AudioInput.isSpeech.value
+  }
+
   if (useVADModel.value && loadedVAD.value) {
     return isSpeechVAD.value
   }
@@ -191,6 +267,15 @@ const isSpeech = computed(() => {
 
 async function setupAudioMonitoring() {
   try {
+    // ESP32 mode: connect to the device, skip microphone and software VAD
+    if (isESP32Source.value) {
+      await stopAudioMonitoring()
+      if (esp32ConnectionStatus.value.state !== 'connected') {
+        await connectESP32()
+      }
+      return
+    }
+
     if (!selectedAudioInput.value) {
       console.warn('No audio input device selected')
       return
@@ -233,6 +318,9 @@ async function stopAudioMonitoring() {
     animationFrame.value = undefined
   }
 
+  // Clean up ESP32 audio input if active
+  esp32AudioInput.dispose()
+
   vadGatedStream?.close()
   vadGatedStream = undefined
   await stopStreamingTranscription(true, activeTranscriptionProvider.value)
@@ -258,6 +346,13 @@ async function toggleMonitoring() {
 
 // Speaking indicator with enhanced VAD visualization
 const speakingIndicatorClass = computed(() => {
+  // ESP32 mode: simple binary speech detection from hardware VAD
+  if (isESP32Source.value) {
+    return esp32AudioInput.isSpeech.value
+      ? 'bg-green-500 shadow-lg shadow-green-500/50'
+      : 'bg-white dark:bg-neutral-900 border-2 border-neutral-300 dark:border-neutral-600'
+  }
+
   if (!useVADModel.value || !loadedVAD.value) {
     // Volume-based: simple green/white
     return isSpeechVolume.value
@@ -528,6 +623,7 @@ onUnmounted(() => {
   stopSTTTest()
   stopAudioMonitoring()
   disposeVAD()
+  esp32AudioInput.dispose()
 
   // Clean up any active transcription sessions when leaving the page
   // This prevents stale sessions from interfering with other pages
@@ -545,8 +641,108 @@ onUnmounted(() => {
   <div flex="~ col md:row gap-6">
     <div bg="neutral-100 dark:[rgba(0,0,0,0.3)]" rounded-xl p-4 flex="~ col gap-4" class="h-fit w-full md:w-[40%]">
       <div flex="~ col gap-4">
-        <!-- Audio Input Selection -->
-        <div>
+        <!-- Audio Input Source Selection (Microphone vs ESP32) -->
+        <div v-if="isElectron" :class="['flex flex-col gap-3']">
+          <div>
+            <h2 :class="['text-lg text-neutral-500 md:text-2xl dark:text-neutral-500']">
+              {{ t('settings.pages.modules.hearing.sections.section.audio-input-source.title') }}
+            </h2>
+            <div :class="['text-neutral-400 dark:text-neutral-400']">
+              <span>{{ t('settings.pages.modules.hearing.sections.section.audio-input-source.description') }}</span>
+            </div>
+          </div>
+          <fieldset :class="['flex flex-row gap-4']" role="radiogroup">
+            <RadioCardSimple
+              id="input-source-microphone"
+              v-model="audioInputSource"
+              name="input-source"
+              value="microphone"
+              :title="t('settings.pages.modules.hearing.sections.section.audio-input-source.microphone')"
+              :description="t('settings.pages.modules.hearing.sections.section.audio-input-source.microphone-description')"
+            />
+            <RadioCardSimple
+              id="input-source-esp32"
+              v-model="audioInputSource"
+              name="input-source"
+              value="esp32"
+              :title="t('settings.pages.modules.hearing.sections.section.audio-input-source.esp32')"
+              :description="t('settings.pages.modules.hearing.sections.section.audio-input-source.esp32-description')"
+            />
+          </fieldset>
+        </div>
+
+        <!-- ESP32 Device Configuration -->
+        <div v-if="isESP32Source && isElectron" :class="['flex flex-col gap-3 border-t border-neutral-200 pt-4 dark:border-neutral-700']">
+          <FieldInput
+            v-model="esp32DeviceUrl"
+            :label="t('settings.pages.modules.hearing.sections.section.esp32.device-url')"
+            :description="t('settings.pages.modules.hearing.sections.section.esp32.device-url-description')"
+            :placeholder="t('settings.pages.modules.hearing.sections.section.esp32.device-url-placeholder')"
+          />
+          <FieldInput
+            v-model="esp32DeviceToken"
+            :label="t('settings.pages.modules.hearing.sections.section.esp32.device-token')"
+            :description="t('settings.pages.modules.hearing.sections.section.esp32.device-token-description')"
+            placeholder="xiaozhi123"
+          />
+          <FieldCombobox
+            v-model="esp32ProtocolVersion"
+            :label="t('settings.pages.modules.hearing.sections.section.esp32.protocol-version')"
+            :options="[
+              { label: 'Version 1 (Raw)', value: 1 },
+              { label: 'Version 2 (16-byte header)', value: 2 },
+              { label: 'Version 3 (Compact)', value: 3 },
+            ]"
+            layout="vertical"
+          />
+
+          <!-- Connect/Disconnect Button -->
+          <Button
+            :class="['w-full']"
+            :disabled="isConnectingESP32"
+            @click="esp32ConnectionStatus.state === 'disconnected' || esp32ConnectionStatus.state === 'error' ? connectESP32() : disconnectESP32()"
+          >
+            <div v-if="isConnectingESP32" :class="['mr-2 animate-spin']">
+              <div i-solar:spinner-line-duotone text-lg />
+            </div>
+            {{ esp32ConnectionStatus.state === 'connected' || esp32ConnectionStatus.state === 'active'
+              ? t('settings.pages.modules.hearing.sections.section.esp32.disconnect')
+              : isConnectingESP32
+                ? t('settings.pages.modules.hearing.sections.section.esp32.connecting')
+                : t('settings.pages.modules.hearing.sections.section.esp32.connect')
+            }}
+          </Button>
+
+          <!-- Connection Status -->
+          <div :class="['flex items-center gap-2']">
+            <div
+              :class="[
+                'h-3 w-3 rounded-full transition-all duration-200',
+                esp32ConnectionStatus.state === 'active' ? 'bg-green-500 shadow-lg shadow-green-500/50' : '',
+                esp32ConnectionStatus.state === 'connected' ? 'bg-blue-500 shadow-lg shadow-blue-500/50' : '',
+                esp32ConnectionStatus.state === 'connecting' ? 'bg-yellow-500 animate-pulse' : '',
+                esp32ConnectionStatus.state === 'error' ? 'bg-red-500' : '',
+                esp32ConnectionStatus.state === 'disconnected' ? 'bg-neutral-400 dark:bg-neutral-600' : '',
+              ]"
+            />
+            <span :class="['text-sm']">
+              {{ t(`settings.pages.modules.hearing.sections.section.esp32.status.${esp32ConnectionStatus.state}`) }}
+            </span>
+            <span v-if="esp32ConnectionStatus.lastError" :class="['text-xs text-red-500']">
+              — {{ esp32ConnectionStatus.lastError }}
+            </span>
+          </div>
+
+          <!-- VAD notice -->
+          <Alert type="info">
+            <template #title>
+              {{ t('settings.pages.modules.hearing.sections.section.esp32.vad-notice') }}
+            </template>
+          </Alert>
+        </div>
+
+        <!-- Audio Input Selection (Microphone mode only) -->
+        <div v-if="!isESP32Source">
           <FieldCombobox
             v-model="selectedAudioInput"
             label="Audio Input Device"
@@ -838,46 +1034,7 @@ onUnmounted(() => {
           <div class="space-y-4">
             <!-- Audio Level Visualization -->
             <div class="space-y-3">
-              <!-- Volume Meter -->
-              <LevelMeter :level="volumeLevel" label="Input Level" />
-
-              <!-- VAD Probability Meter (when VAD model is active) -->
-              <ThresholdMeter
-                v-if="useVADModel && loadedVAD"
-                :value="isSpeechProb"
-                :threshold="useVADThreshold"
-                label="Probability of Speech"
-                below-label="Silence"
-                above-label="Speech"
-                threshold-label="Detection threshold"
-              />
-
-              <!-- Threshold Controls -->
-              <div v-if="useVADModel && loadedVAD" class="space-y-3">
-                <FieldRange
-                  v-model="useVADThreshold"
-                  label="Sensitivity"
-                  description="Adjust the threshold for speech detection"
-                  :min="0.1"
-                  :max="0.9"
-                  :step="0.05"
-                  :format-value="value => `${(value * 100).toFixed(0)}%`"
-                />
-              </div>
-
-              <div v-else class="space-y-3">
-                <FieldRange
-                  v-model="useVADThreshold"
-                  label="Sensitivity"
-                  description="Adjust the threshold for speech detection"
-                  :min="1"
-                  :max="80"
-                  :step="1"
-                  :format-value="value => `${value}%`"
-                />
-              </div>
-
-              <!-- Speaking Indicator -->
+              <!-- Speaking Indicator (shown for both microphone and ESP32 modes) -->
               <div class="flex items-center gap-3">
                 <div
                   class="h-4 w-4 rounded-full transition-all duration-200"
@@ -887,55 +1044,97 @@ onUnmounted(() => {
                   {{ isSpeech ? 'Speaking Detected' : 'Silence' }}
                 </span>
                 <span class="ml-auto text-xs text-neutral-500">
-                  {{ useVADModel && loadedVAD ? 'Model Based' : 'Volume Based' }}
+                  {{ isESP32Source ? 'ESP32 Hardware VAD' : useVADModel && loadedVAD ? 'Model Based' : 'Volume Based' }}
                 </span>
               </div>
 
-              <!-- VAD Method Selection -->
-              <div class="border-t border-neutral-200 pt-3 dark:border-neutral-700">
-                <FieldCheckbox
-                  v-model="useVADModel"
-                  label="Model Based"
-                  description="Use AI models for more accurate speech detection"
+              <!-- Microphone-specific monitoring controls (hidden when ESP32 is active) -->
+              <template v-if="!isESP32Source">
+                <!-- Volume Meter -->
+                <LevelMeter :level="volumeLevel" label="Input Level" />
+
+                <!-- VAD Probability Meter (when VAD model is active) -->
+                <ThresholdMeter
+                  v-if="useVADModel && loadedVAD"
+                  :value="isSpeechProb"
+                  :threshold="useVADThreshold"
+                  label="Probability of Speech"
+                  below-label="Silence"
+                  above-label="Speech"
+                  threshold-label="Detection threshold"
                 />
 
-                <!-- VAD Model Status -->
-                <div v-if="useVADModel" class="mt-3 space-y-2">
-                  <div v-if="loadingVAD" class="flex items-center gap-2 text-primary-600 dark:text-primary-400">
-                    <div class="animate-spin text-sm" i-solar:spinner-line-duotone />
-                    <span class="text-sm">Loading...</span>
-                  </div>
+                <!-- Threshold Controls -->
+                <div v-if="useVADModel && loadedVAD" class="space-y-3">
+                  <FieldRange
+                    v-model="useVADThreshold"
+                    label="Sensitivity"
+                    description="Adjust the threshold for speech detection"
+                    :min="0.1"
+                    :max="0.9"
+                    :step="0.05"
+                    :format-value="value => `${(value * 100).toFixed(0)}%`"
+                  />
+                </div>
 
-                  <ErrorContainer
-                    v-else-if="vadModelError"
-                    title="Inference error"
-                    :error="vadModelError"
+                <div v-else class="space-y-3">
+                  <FieldRange
+                    v-model="useVADThreshold"
+                    label="Sensitivity"
+                    description="Adjust the threshold for speech detection"
+                    :min="1"
+                    :max="80"
+                    :step="1"
+                    :format-value="value => `${value}%`"
+                  />
+                </div>
+
+                <!-- VAD Method Selection -->
+                <div class="border-t border-neutral-200 pt-3 dark:border-neutral-700">
+                  <FieldCheckbox
+                    v-model="useVADModel"
+                    label="Model Based"
+                    description="Use AI models for more accurate speech detection"
                   />
 
-                  <div v-else-if="loadedVAD" class="flex items-center gap-2 text-green-600 dark:text-green-400">
-                    <div class="text-sm" i-solar:check-circle-bold-duotone />
-                    <span class="text-sm">Activated</span>
-                    <span class="ml-auto text-xs text-neutral-500">
-                      Probability: {{ (isSpeechProb * 100).toFixed(1) }}%
-                    </span>
+                  <!-- VAD Model Status -->
+                  <div v-if="useVADModel" class="mt-3 space-y-2">
+                    <div v-if="loadingVAD" class="flex items-center gap-2 text-primary-600 dark:text-primary-400">
+                      <div class="animate-spin text-sm" i-solar:spinner-line-duotone />
+                      <span class="text-sm">Loading...</span>
+                    </div>
+
+                    <ErrorContainer
+                      v-else-if="vadModelError"
+                      title="Inference error"
+                      :error="vadModelError"
+                    />
+
+                    <div v-else-if="loadedVAD" class="flex items-center gap-2 text-green-600 dark:text-green-400">
+                      <div class="text-sm" i-solar:check-circle-bold-duotone />
+                      <span class="text-sm">Activated</span>
+                      <span class="ml-auto text-xs text-neutral-500">
+                        Probability: {{ (isSpeechProb * 100).toFixed(1) }}%
+                      </span>
+                    </div>
                   </div>
                 </div>
-              </div>
 
-              <!-- Voice Activity Visualization (when VAD model is active) -->
-              <TimeSeriesChart
-                v-if="useVADModel && loadedVAD"
-                :history="isSpeechHistory"
-                :current-value="isSpeechProb"
-                :threshold="useVADThreshold"
-                :is-active="isSpeech"
-                title="Voice Activity"
-                subtitle="Last 2 seconds"
-                active-label="Speaking"
-                active-legend-label="Voice detected"
-                inactive-legend-label="Silence"
-                threshold-label="Speech threshold"
-              />
+                <!-- Voice Activity Visualization (when VAD model is active) -->
+                <TimeSeriesChart
+                  v-if="useVADModel && loadedVAD"
+                  :history="isSpeechHistory"
+                  :current-value="isSpeechProb"
+                  :threshold="useVADThreshold"
+                  :is-active="isSpeech"
+                  title="Voice Activity"
+                  subtitle="Last 2 seconds"
+                  active-label="Speaking"
+                  active-legend-label="Voice detected"
+                  inactive-legend-label="Silence"
+                  threshold-label="Speech threshold"
+                />
+              </template>
             </div>
           </div>
         </div>
