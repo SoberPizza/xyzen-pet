@@ -5,9 +5,11 @@ import type {
   LocalAIServiceStatus,
   LocalAIStatusResult,
 } from '@proj-airi/stage-shared/local-ai'
+import type { RemovableRef } from '@vueuse/core'
 
 import { defineInvoke } from '@moeru/eventa'
 import { createContext } from '@moeru/eventa/adapters/electron/renderer'
+import { errorMessageFrom } from '@moeru/std'
 import { isElectronWindow } from '@proj-airi/stage-shared'
 import {
   localAICheckLlamaEventa,
@@ -21,12 +23,13 @@ import { useConsciousnessStore } from '@proj-airi/stage-ui/stores/modules/consci
 import { useProvidersStore } from '@proj-airi/stage-ui/stores/providers'
 import { Button, FieldInput } from '@proj-airi/ui'
 import { storeToRefs } from 'pinia'
-import { computed, onUnmounted, ref, watch } from 'vue'
+import { computed, onUnmounted, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 const providersStore = useProvidersStore()
 const consciousnessStore = useConsciousnessStore()
 const { localChatProviders, cloudChatProviders, allCloudChatProviders, configuredProviders } = storeToRefs(providersStore)
+const { providers } = storeToRefs(providersStore) as { providers: RemovableRef<Record<string, any>> }
 const {
   activeProvider,
   activeModel,
@@ -51,11 +54,35 @@ const llamaCheck = ref<LocalAICheckLlamaResult | null>(null)
 const isCheckingLlama = ref(false)
 const isTogglingLlamaService = ref(false)
 const llamaServiceStatus = ref<LocalAIServiceStatus | null>(null)
+const llamaError = ref<string | null>(null)
 
-const llamaModelPath = ref('')
-const llamaPort = ref(8080)
-const llamaContextLength = ref(2048)
-const llamaGpuLayers = ref(-1)
+function ensureLlamaProvider() {
+  if (!providers.value['llama-cpp-local'])
+    providers.value['llama-cpp-local'] = {}
+}
+
+const llamaConfig = reactive({
+  get modelPath() { return providers.value['llama-cpp-local']?.modelPath || '' },
+  set modelPath(v: string) {
+    ensureLlamaProvider()
+    providers.value['llama-cpp-local'].modelPath = v
+  },
+  get port() { return providers.value['llama-cpp-local']?.port || 8080 },
+  set port(v: number) {
+    ensureLlamaProvider()
+    providers.value['llama-cpp-local'].port = v
+  },
+  get contextLength() { return providers.value['llama-cpp-local']?.contextLength || 2048 },
+  set contextLength(v: number) {
+    ensureLlamaProvider()
+    providers.value['llama-cpp-local'].contextLength = v
+  },
+  get gpuLayers() { return providers.value['llama-cpp-local']?.gpuLayers ?? -1 },
+  set gpuLayers(v: number) {
+    ensureLlamaProvider()
+    providers.value['llama-cpp-local'].gpuLayers = v
+  },
+})
 
 let invokeLlamaCheck: (() => Promise<LocalAICheckLlamaResult>) | undefined
 let invokeLlamaConfigure: ((payload: LocalAILlamaServerConfig) => Promise<LocalAIServiceStatus>) | undefined
@@ -103,20 +130,26 @@ async function checkLlamaEnv() {
 }
 
 async function handleStartLlamaService() {
-  if (!invokeLlamaConfigure || !llamaModelPath.value.trim())
+  if (!invokeLlamaConfigure)
     return
+  if (!llamaConfig.modelPath.trim()) {
+    llamaError.value = t('settings.pages.modules.consciousness.sections.section.local-llm.error-no-model-path', 'Model path is required')
+    return
+  }
+  llamaError.value = null
   isTogglingLlamaService.value = true
   try {
     llamaServiceStatus.value = await invokeLlamaConfigure({
-      modelPath: llamaModelPath.value,
-      port: llamaPort.value,
-      contextLength: llamaContextLength.value,
-      gpuLayers: llamaGpuLayers.value,
+      modelPath: llamaConfig.modelPath,
+      port: llamaConfig.port,
+      contextLength: llamaConfig.contextLength,
+      gpuLayers: llamaConfig.gpuLayers,
     })
     // Sync provider baseUrl with configured port
     syncLlamaBaseUrl()
   }
   catch (err) {
+    llamaError.value = errorMessageFrom(err) ?? 'Failed to start llama-server'
     console.error('[Consciousness] Failed to start llama-server:', err)
   }
   finally {
@@ -127,11 +160,13 @@ async function handleStartLlamaService() {
 async function handleStopLlamaService() {
   if (!invokeStop)
     return
+  llamaError.value = null
   isTogglingLlamaService.value = true
   try {
     llamaServiceStatus.value = await invokeStop({ serviceId: 'llama-server' })
   }
   catch (err) {
+    llamaError.value = errorMessageFrom(err) ?? 'Failed to stop llama-server'
     console.error('[Consciousness] Failed to stop llama-server:', err)
   }
   finally {
@@ -140,11 +175,8 @@ async function handleStopLlamaService() {
 }
 
 function syncLlamaBaseUrl() {
-  const providerId = 'llama-cpp-local'
-  if (!providersStore.providers[providerId]) {
-    providersStore.providers[providerId] = {}
-  }
-  providersStore.providers[providerId].baseUrl = `http://localhost:${llamaPort.value}/v1/`
+  ensureLlamaProvider()
+  providers.value['llama-cpp-local'].baseUrl = `http://localhost:${llamaConfig.port}/v1/`
 }
 
 watch(activeProvider, async (provider, oldProvider) => {
@@ -280,25 +312,25 @@ function handleProviderDeleted() {
 
           <!-- Model configuration -->
           <FieldInput
-            v-model="llamaModelPath"
+            v-model="llamaConfig.modelPath"
             :label="t('settings.pages.modules.consciousness.sections.section.local-llm.model-path-label')"
             placeholder="/path/to/model.gguf"
           />
           <div :class="['grid grid-cols-3 gap-3']">
             <FieldInput
-              v-model.number="llamaPort"
+              v-model.number="llamaConfig.port"
               :label="t('settings.pages.modules.consciousness.sections.section.local-llm.port-label')"
               type="number"
               placeholder="8080"
             />
             <FieldInput
-              v-model.number="llamaContextLength"
+              v-model.number="llamaConfig.contextLength"
               :label="t('settings.pages.modules.consciousness.sections.section.local-llm.context-length-label')"
               type="number"
               placeholder="2048"
             />
             <FieldInput
-              v-model.number="llamaGpuLayers"
+              v-model.number="llamaConfig.gpuLayers"
               :label="t('settings.pages.modules.consciousness.sections.section.local-llm.gpu-layers-label')"
               type="number"
               placeholder="-1"
@@ -348,7 +380,9 @@ function handleProviderDeleted() {
 
               <Button
                 v-if="!isLlamaServiceStarting"
-                :disabled="isTogglingLlamaService || (!llamaCheck?.llamaServerFound && !isLlamaServiceRunning) || (!llamaModelPath.trim() && !isLlamaServiceRunning)"
+                :disabled="isLlamaServiceRunning
+                  ? isTogglingLlamaService
+                  : isTogglingLlamaService || isCheckingLlama || !llamaCheck?.llamaServerFound || !llamaConfig.modelPath.trim()"
                 size="sm"
                 :variant="isLlamaServiceRunning ? 'secondary' : 'primary'"
                 @click="isLlamaServiceRunning ? handleStopLlamaService() : handleStartLlamaService()"
@@ -360,6 +394,16 @@ function handleProviderDeleted() {
               </Button>
             </div>
           </div>
+
+          <!-- Error display -->
+          <Alert v-if="llamaError" type="error">
+            <template #title>
+              {{ t('settings.pages.modules.consciousness.sections.section.local-llm.service-error') }}
+            </template>
+            <template #content>
+              {{ llamaError }}
+            </template>
+          </Alert>
 
           <!-- Setup instructions (when llama-server not found) -->
           <div
