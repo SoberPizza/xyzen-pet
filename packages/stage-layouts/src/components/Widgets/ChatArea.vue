@@ -53,8 +53,39 @@ const hearingStore = useHearingStore()
 const hearingPipeline = useHearingSpeechInputPipeline()
 const { transcribeForMediaStream, stopStreamingTranscription } = hearingPipeline
 const { supportsStreamInput } = storeToRefs(hearingPipeline)
-const { configured: hearingConfigured, autoSendEnabled, autoSendDelay } = storeToRefs(hearingStore)
+const { configured: hearingConfigured, autoSendEnabled, autoSendDelay, wakeWordEnabled, wakeWord, wakeWordTimeout } = storeToRefs(hearingStore)
 const shouldUseStreamInput = computed(() => supportsStreamInput.value && !!stream.value)
+
+// Wake word state
+let wakeWordActive = false
+let wakeWordTimer: ReturnType<typeof setTimeout> | undefined
+
+function resetWakeWordTimer() {
+  if (wakeWordTimer)
+    clearTimeout(wakeWordTimer)
+  wakeWordTimer = setTimeout(() => { wakeWordActive = false }, wakeWordTimeout.value)
+}
+
+function clearWakeWordTimer() {
+  if (wakeWordTimer) {
+    clearTimeout(wakeWordTimer)
+    wakeWordTimer = undefined
+  }
+}
+
+/** Append transcribed text to message input and trigger auto-send if enabled. */
+function appendAndMaybeAutoSend(delta: string) {
+  const currentText = messageInput.value.trim()
+  messageInput.value = currentText ? `${currentText} ${delta}` : delta
+  console.info('[ChatArea] Received transcription delta:', delta)
+
+  if (autoSendEnabled.value) {
+    debouncedAutoSend(delta)
+  }
+  else {
+    clearPendingAutoSend()
+  }
+}
 
 // Auto-send logic
 let autoSendTimeout: ReturnType<typeof setTimeout> | undefined
@@ -104,6 +135,11 @@ async function debouncedAutoSend(text: string) {
           model: activeModel.value,
           providerConfig,
         })
+
+        // Start wake word timeout after LLM reply completes
+        if (wakeWordEnabled.value && wakeWordActive) {
+          resetWakeWordTimer()
+        }
       }
       catch (err) {
         console.error('[ChatArea] Auto-send error:', err)
@@ -227,6 +263,7 @@ watch([hearingPopoverOpen, enabled, stream], () => {
 onUnmounted(() => {
   teardownAnalyzer()
   stopListening()
+  clearWakeWordTimer()
 
   // Clear auto-send timeout on unmount
   if (autoSendTimeout) {
@@ -297,22 +334,30 @@ async function startListening() {
     try {
       await transcribeForMediaStream(stream.value, {
         onSentenceEnd: (delta) => {
-          if (delta && delta.trim()) {
-            // Append transcribed text to message input
-            const currentText = messageInput.value.trim()
-            messageInput.value = currentText ? `${currentText} ${delta}` : delta
-            console.info('[ChatArea] Received transcription delta:', delta)
+          if (!delta?.trim())
+            return
 
-            // Auto-send if enabled - check the current value (not captured in closure)
-            // This ensures we always respect the current setting, even if callbacks are reused
-            if (autoSendEnabled.value) {
-              debouncedAutoSend(delta)
-            }
-            else {
-              // If auto-send is disabled, clear any pending auto-send text to prevent accidental sends
-              clearPendingAutoSend()
+          // Block voice input while LLM is responding (not interruptible)
+          if (chatOrchestrator.sending)
+            return
+
+          // Wake word gating
+          if (wakeWordEnabled.value) {
+            if (!wakeWordActive) {
+              // Not yet awake — check if this delta contains the wake word
+              if (!delta.includes(wakeWord.value))
+                return
+              wakeWordActive = true
+              clearWakeWordTimer()
+              const after = delta.slice(delta.indexOf(wakeWord.value) + wakeWord.value.length).trim()
+              if (!after)
+                return
+              // Use the text after the wake word
+              delta = after
             }
           }
+
+          appendAndMaybeAutoSend(delta)
         },
         // Omit onSpeechEnd to avoid re-adding user-deleted text; use sentence deltas only.
       })

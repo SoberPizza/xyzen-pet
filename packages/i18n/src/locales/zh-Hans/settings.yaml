@@ -537,6 +537,14 @@ pages:
       description: 语音合成
       sections:
         section:
+          audio-output-target:
+            title: 音频输出目标
+            description: 选择语音播放的输出目标
+            speaker: 扬声器
+            speaker-description: 通过电脑扬声器播放音频
+            esp32: ESP32 设备
+            esp32-description: 将音频发送到小智 ESP32 硬件设备
+            esp32-not-connected: ESP32 设备未连接，请先在听觉设置中连接设备。
           playground:
             buttons:
               stop:

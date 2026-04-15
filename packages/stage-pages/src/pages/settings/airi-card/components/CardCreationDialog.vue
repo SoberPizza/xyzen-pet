@@ -2,6 +2,7 @@
 import type { Card } from '@proj-airi/ccc'
 import type { AiriExtension } from '@proj-airi/stage-ui/stores/modules/airi-card'
 
+import SystemPromptV2 from '@proj-airi/stage-ui/constants/prompts/system-v2'
 import kebabcase from '@stdlib/string-base-kebabcase'
 
 import { useDisplayModelsStore } from '@proj-airi/stage-ui/stores/display-models'
@@ -278,6 +279,10 @@ function saveCard(card: Card): boolean {
 
   if (isEditMode.value && props.cardId) {
     // Edit mode: update existing card
+    // Mark default card description as customized so the store uses the persisted value
+    if (props.cardId === 'default' && !cardStore.defaultCardDescriptionCustomized) {
+      cardStore.customizeDefaultCardDescription()
+    }
     cardStore.updateCard(props.cardId, cardWithModules)
   }
   else {
@@ -307,7 +312,13 @@ function initializeCard(): Card {
 
   // Return existing card data or defaults
   if (existingCard) {
-    return { ...toRaw(existingCard) }
+    const cardData = { ...toRaw(existingCard) }
+    // For the default card with un-customized description, populate from i18n
+    // so the user sees the current system prompt in the editor
+    if (props.cardId === 'default' && !cardStore.defaultCardDescriptionCustomized) {
+      cardData.description = SystemPromptV2(t('base.prompt.prefix'), t('base.prompt.suffix')).content
+    }
+    return cardData
   }
 
   return {

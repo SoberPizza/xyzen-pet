@@ -1423,24 +1423,27 @@ export const useProvidersStore = defineStore('providers', () => {
         },
 
         /**
-         * Stream speech generation: returns a ReadableStream of independent WAV ArrayBuffers.
-         * The server sends length-prefixed frames: [4-byte big-endian length][WAV bytes] per chunk.
-         * Each chunk is a complete, independently decodable WAV file.
+         * Stream speech generation: returns a ReadableStream of raw PCM ArrayBuffers.
+         * Uses raw_pcm format to avoid per-chunk WAV decoding overhead.
+         * First frame is JSON metadata, subsequent frames are raw PCM int16 LE.
+         * Each enqueued ArrayBuffer is already an AudioBuffer-ready PCM chunk.
          */
         generateSpeechStream: async (config: Record<string, unknown>, input: string, voice: string): Promise<ReadableStream<ArrayBuffer>> => {
           const baseUrl = typeof config.baseUrl === 'string' ? config.baseUrl.trim() : 'http://localhost:10097'
           const res = await fetch(`${baseUrl}/v1/audio/speech`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ input, voice, stream: true }),
+            body: JSON.stringify({ input, voice, stream: true, format: 'raw_pcm' }),
           })
 
           if (!res.ok || !res.body)
             throw new Error(`CosyVoice streaming request failed: ${res.status}`)
 
           const reader = res.body.getReader()
+          let isFirstFrame = true
+          let sampleRate = 22050
 
-          // Parse length-prefixed frames into independent WAV ArrayBuffers
+          // Parse length-prefixed frames into PCM ArrayBuffers
           return new ReadableStream<ArrayBuffer>({
             async pull(controller) {
               let buffer = new Uint8Array(0)
@@ -1465,9 +1468,26 @@ export const useProvidersStore = defineStore('providers', () => {
                   if (buffer.length < 4 + chunkLen)
                     break // not enough data yet
 
-                  const wavBytes = buffer.slice(4, 4 + chunkLen).buffer
-                  controller.enqueue(wavBytes)
+                  const frameData = buffer.slice(4, 4 + chunkLen)
                   buffer = buffer.slice(4 + chunkLen)
+
+                  if (isFirstFrame) {
+                    // First frame is JSON metadata
+                    try {
+                      const metadata = JSON.parse(new TextDecoder().decode(frameData))
+                      sampleRate = metadata.sampleRate ?? 22050
+                    }
+                    catch {
+                      console.warn('[CosyVoice] Failed to parse metadata frame, using defaults')
+                    }
+                    isFirstFrame = false
+                    continue
+                  }
+
+                  // Tag the raw PCM buffer with sampleRate for the consumer
+                  const pcmBuffer = frameData.buffer.slice(frameData.byteOffset, frameData.byteOffset + frameData.byteLength) as ArrayBuffer & { __pcmSampleRate?: number }
+                  ;(pcmBuffer as any).__pcmSampleRate = sampleRate
+                  controller.enqueue(pcmBuffer)
                 }
               }
             },
@@ -1546,10 +1566,21 @@ export const useProvidersStore = defineStore('providers', () => {
     providerMetadata[providerId] = translated
   }
 
+  // Read the same localStorage keys the module stores use (avoids circular dependency)
+  const activeConsciousnessProvider = useLocalStorage('settings/consciousness/active-provider', 'llama-cpp-local')
+  const activeSpeechProvider = useLocalStorage('settings/speech/active-provider', 'cosyvoice-local-server')
+  const activeHearingProvider = useLocalStorage('settings/hearing/active-provider', 'sensevoice-local-server')
+
+  const activeProviderIds = computed(() => new Set([
+    activeConsciousnessProvider.value,
+    activeSpeechProvider.value,
+    activeHearingProvider.value,
+  ].filter(Boolean)))
+
   // const validatedCredentials = ref<Record<string, string>>({})
   const providerRuntimeState = ref<Record<string, ProviderRuntimeState>>({})
   const providerValidationInFlight = new Map<string, Promise<boolean>>()
-  const providerRevalidationLoops = new Map<string, { resume: () => void }>()
+  const providerRevalidationLoops = new Map<string, { pause: () => void, resume: () => void }>()
   const providerBackoffState = new Map<string, { consecutiveFailures: number }>()
 
   const configuredProviders = computed(() => {
@@ -1656,47 +1687,52 @@ export const useProvidersStore = defineStore('providers', () => {
 
   const BACKOFF_MAX_INTERVAL_MS = 120_000
 
+  function createValidationLoop(providerId: string, baseIntervalMs: number) {
+    if (providerRevalidationLoops.has(providerId))
+      return
+
+    const dynamicInterval = ref(baseIntervalMs)
+
+    const loop = useIntervalFn(async () => {
+      const result = await validateProvider(providerId, { force: true })
+      const backoff = providerBackoffState.get(providerId) ?? { consecutiveFailures: 0 }
+
+      if (result) {
+        backoff.consecutiveFailures = 0
+        dynamicInterval.value = baseIntervalMs
+      }
+      else {
+        backoff.consecutiveFailures++
+        dynamicInterval.value = Math.min(
+          baseIntervalMs * (2 ** backoff.consecutiveFailures),
+          BACKOFF_MAX_INTERVAL_MS,
+        )
+      }
+
+      providerBackoffState.set(providerId, backoff)
+    }, dynamicInterval, { immediate: false, immediateCallback: false })
+    loop.resume()
+    providerRevalidationLoops.set(providerId, loop)
+  }
+
   function startPeriodicRuntimeValidation() {
+    const activeIds = activeProviderIds.value
     for (const [providerId, baseIntervalMs] of providerValidationIntervalMsById.entries()) {
       if (!providerMetadata[providerId] || baseIntervalMs <= 0)
         continue
 
-      if (providerRevalidationLoops.has(providerId)) {
+      if (!activeIds.has(providerId))
         continue
-      }
 
-      const dynamicInterval = ref(baseIntervalMs)
-
-      const loop = useIntervalFn(async () => {
-        const result = await validateProvider(providerId, { force: true })
-        const backoff = providerBackoffState.get(providerId) ?? { consecutiveFailures: 0 }
-
-        if (result) {
-          // Success: reset backoff
-          backoff.consecutiveFailures = 0
-          dynamicInterval.value = baseIntervalMs
-        }
-        else {
-          // Failure: exponential backoff
-          backoff.consecutiveFailures++
-          dynamicInterval.value = Math.min(
-            baseIntervalMs * (2 ** backoff.consecutiveFailures),
-            BACKOFF_MAX_INTERVAL_MS,
-          )
-        }
-
-        providerBackoffState.set(providerId, backoff)
-      }, dynamicInterval, { immediate: false, immediateCallback: false })
-      loop.resume()
-      providerRevalidationLoops.set(providerId, loop)
+      createValidationLoop(providerId, baseIntervalMs)
     }
   }
 
-  // Update configuration status for all configured providers
+  // Update configuration status for active providers only
   async function updateConfigurationStatus() {
+    const activeIds = activeProviderIds.value
     await Promise.all(Object.entries(providerMetadata)
-      // TODO: ignore un-configured provider
-      // .filter(([_, provider]) => provider.configured)
+      .filter(([providerId]) => activeIds.has(providerId))
       .map(async ([providerId]) => {
         try {
           if (providerRuntimeState.value[providerId]) {
@@ -1715,6 +1751,40 @@ export const useProvidersStore = defineStore('providers', () => {
   // Call initially and watch for changes
   watch(providerCredentials, updateConfigurationStatus, { deep: true, immediate: true })
   startPeriodicRuntimeValidation()
+
+  // When the user switches active provider, manage validation loops accordingly
+  watch(activeProviderIds, (newIds, oldIds) => {
+    // Pause loops for deselected providers
+    if (oldIds) {
+      for (const id of oldIds) {
+        if (!newIds.has(id)) {
+          providerRevalidationLoops.get(id)?.pause()
+        }
+      }
+    }
+
+    // Resume or create loops for newly selected providers
+    for (const id of newIds) {
+      if (!oldIds || !oldIds.has(id)) {
+        const existing = providerRevalidationLoops.get(id)
+        if (existing) {
+          existing.resume()
+        }
+        else {
+          const baseIntervalMs = providerValidationIntervalMsById.get(id)
+          if (baseIntervalMs && baseIntervalMs > 0 && providerMetadata[id]) {
+            createValidationLoop(id, baseIntervalMs)
+          }
+        }
+
+        // Immediate validation for newly selected provider
+        validateProvider(id, { force: true })
+      }
+    }
+
+    // Re-run configuration status for the new active set
+    updateConfigurationStatus()
+  })
 
   watch(() => authState.isAuthenticated, updateConfigurationStatus)
 
@@ -2116,5 +2186,6 @@ export const useProvidersStore = defineStore('providers', () => {
     allCloudChatProviders,
     allCloudSpeechProviders,
     allCloudTranscriptionProviders,
+    activeProviderIds,
   }
 })

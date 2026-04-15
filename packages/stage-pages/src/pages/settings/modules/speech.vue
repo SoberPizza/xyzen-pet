@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { SpeechProviderWithExtraOptions } from '@xsai-ext/providers/utils'
 
+import { isElectronWindow } from '@proj-airi/stage-shared'
 import {
   AddProviderDialog,
   Alert,
@@ -14,6 +15,7 @@ import {
 import { useAnalytics } from '@proj-airi/stage-ui/composables'
 import { useSpeechStore } from '@proj-airi/stage-ui/stores/modules/speech'
 import { useProvidersStore } from '@proj-airi/stage-ui/stores/providers'
+import { useSettingsAudioDevice, useSettingsESP32Bridge } from '@proj-airi/stage-ui/stores/settings'
 import {
   FieldCheckbox,
   FieldInput,
@@ -46,6 +48,12 @@ const {
   ssmlEnabled,
   availableVoices,
 } = storeToRefs(speechStore)
+
+const isElectron = typeof window !== 'undefined' && isElectronWindow(window)
+const audioDeviceStore = useSettingsAudioDevice()
+const { audioOutputTarget } = storeToRefs(audioDeviceStore)
+const esp32Store = useSettingsESP32Bridge()
+const { connectionStatus: esp32ConnectionStatus } = storeToRefs(esp32Store)
 
 const { trackProviderClick } = useAnalytics()
 
@@ -277,6 +285,45 @@ function handleDeleteProvider(providerId: string) {
 <template>
   <div flex="~ col md:row gap-6">
     <div bg="neutral-100 dark:[rgba(0,0,0,0.3)]" rounded-xl p-4 flex="~ col gap-4" class="h-fit w-full md:w-[40%]">
+      <!-- Audio Output Target Selection (Speaker vs ESP32) -->
+      <div v-if="isElectron" :class="['flex flex-col gap-3']">
+        <div>
+          <h2 :class="['text-lg text-neutral-500 md:text-2xl dark:text-neutral-500']">
+            {{ t('settings.pages.modules.speech.sections.section.audio-output-target.title') }}
+          </h2>
+          <div :class="['text-neutral-400 dark:text-neutral-400']">
+            <span>{{ t('settings.pages.modules.speech.sections.section.audio-output-target.description') }}</span>
+          </div>
+        </div>
+        <fieldset :class="['flex flex-row gap-4']" role="radiogroup">
+          <RadioCardSimple
+            id="output-target-speaker"
+            v-model="audioOutputTarget"
+            name="output-target"
+            value="speaker"
+            :title="t('settings.pages.modules.speech.sections.section.audio-output-target.speaker')"
+            :description="t('settings.pages.modules.speech.sections.section.audio-output-target.speaker-description')"
+          />
+          <RadioCardSimple
+            id="output-target-esp32"
+            v-model="audioOutputTarget"
+            name="output-target"
+            value="esp32"
+            :title="t('settings.pages.modules.speech.sections.section.audio-output-target.esp32')"
+            :description="t('settings.pages.modules.speech.sections.section.audio-output-target.esp32-description')"
+          />
+        </fieldset>
+        <Alert
+          v-if="audioOutputTarget === 'esp32' && esp32ConnectionStatus.state !== 'active' && esp32ConnectionStatus.state !== 'connected'"
+          type="warning"
+          icon="i-solar:info-circle-line-duotone"
+        >
+          <template #title>
+            {{ t('settings.pages.modules.speech.sections.section.audio-output-target.esp32-not-connected') }}
+          </template>
+        </Alert>
+      </div>
+
       <div>
         <div flex="~ col gap-4">
           <div>

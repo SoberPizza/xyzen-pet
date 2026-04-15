@@ -14,6 +14,7 @@ import json
 import sys
 import warnings
 from http.server import HTTPServer, BaseHTTPRequestHandler
+from socketserver import ThreadingMixIn
 
 warnings.filterwarnings('ignore', message='.*LibreSSL.*')
 
@@ -21,6 +22,7 @@ warnings.filterwarnings('ignore', message='.*LibreSSL.*')
 parser = argparse.ArgumentParser(description='CosyVoice TTS HTTP server')
 parser.add_argument('--port', type=int, default=10097)
 parser.add_argument('--device', type=str, default='cpu')
+parser.add_argument('--model', type=str, default='iic/CosyVoice-300M-SFT')
 args = parser.parse_args()
 
 import torch  # noqa: E402
@@ -28,13 +30,13 @@ import torch  # noqa: E402
 use_cuda = args.device == 'cuda' and torch.cuda.is_available()
 use_fp16 = use_cuda
 
-print(f'[cosyvoice-server] Loading CosyVoice-300M-SFT device={args.device}, cuda={use_cuda}, fp16={use_fp16}', flush=True)
+print(f'[cosyvoice-server] Loading {args.model} device={args.device}, cuda={use_cuda}, fp16={use_fp16}', flush=True)
 
 import numpy as np  # noqa: E402
 import soundfile as sf  # noqa: E402
 from cosyvoice.cli.cosyvoice import CosyVoice  # noqa: E402
 
-cosyvoice = CosyVoice('iic/CosyVoice-300M-SFT', load_jit=False, fp16=use_fp16)
+cosyvoice = CosyVoice(args.model, load_jit=False, fp16=use_fp16)
 
 print('[cosyvoice-server] Model loaded', flush=True)
 
@@ -95,6 +97,31 @@ def generate_speech_stream(text: str, voice: str):
         yield struct.pack('>I', len(wav_bytes)) + wav_bytes
 
 
+def generate_speech_stream_pcm(text: str, voice: str):
+    """Yield length-prefixed raw PCM frames as CosyVoice generates them.
+
+    First frame: [4B length][JSON metadata: {"sampleRate":22050,"channels":1,"format":"int16"}]
+    Subsequent frames: [4B length][raw PCM int16 LE bytes]
+
+    Raw PCM avoids per-chunk WAV header parsing and decodeAudioData() overhead on the client,
+    reducing streaming latency by 10-50ms per chunk.
+    """
+    # Emit metadata frame first
+    metadata = json.dumps({"sampleRate": SAMPLE_RATE, "channels": 1, "format": "int16"}).encode('utf-8')
+    yield struct.pack('>I', len(metadata)) + metadata
+
+    output = cosyvoice.inference_sft(text, voice, stream=True)
+
+    for result in output:
+        audio = result['tts_speech']
+        if hasattr(audio, 'numpy'):
+            audio = audio.cpu().numpy()
+        chunk_np = np.array(audio).flatten()
+        # Convert float32 [-1, 1] to int16 LE bytes
+        pcm_bytes = (chunk_np * 32767).astype('<i2').tobytes()
+        yield struct.pack('>I', len(pcm_bytes)) + pcm_bytes
+
+
 class CosyVoiceHandler(BaseHTTPRequestHandler):
     """HTTP request handler for CosyVoice TTS."""
 
@@ -122,7 +149,7 @@ class CosyVoiceHandler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         if self.path == '/health':
-            self._send_json(200, {'status': 'ok', 'model': 'CosyVoice-300M-SFT'})
+            self._send_json(200, {'status': 'ok', 'model': args.model})
         elif self.path == '/v1/voices':
             voices = [{'id': v, 'name': v} for v in AVAILABLE_VOICES]
             self._send_json(200, {'voices': voices})
@@ -149,8 +176,10 @@ class CosyVoiceHandler(BaseHTTPRequestHandler):
 
                 print(f'[cosyvoice-server] Generating speech: voice={voice}, stream={stream}, text="{text[:80]}..."', flush=True)
 
+                fmt = body.get('format', '')
+
                 if stream:
-                    self._handle_stream(text, voice)
+                    self._handle_stream(text, voice, fmt)
                 else:
                     self._handle_full(text, voice)
 
@@ -175,31 +204,39 @@ class CosyVoiceHandler(BaseHTTPRequestHandler):
 
         print(f'[cosyvoice-server] Generated {len(wav_bytes)} bytes of audio', flush=True)
 
-    def _handle_stream(self, text: str, voice: str):
-        """Streaming: send length-prefixed WAV chunks as they are generated.
+    def _handle_stream(self, text: str, voice: str, fmt: str = ''):
+        """Streaming: send length-prefixed chunks as they are generated.
 
-        Each frame is [4 bytes big-endian length][WAV bytes]. The response has
-        no Content-Length so the client reads until EOF (connection close).
+        When format == 'raw_pcm', sends raw PCM int16 LE frames (faster client-side).
+        Otherwise sends WAV frames (backward compatible).
+        Each frame is [4 bytes big-endian length][payload bytes].
         """
         self.send_response(200)
         self.send_header('Content-Type', 'application/octet-stream')
         self.send_header('Access-Control-Allow-Origin', '*')
         self.end_headers()
 
+        generator = generate_speech_stream_pcm(text, voice) if fmt == 'raw_pcm' else generate_speech_stream(text, voice)
+
         total_bytes = 0
         chunk_count = 0
-        for frame in generate_speech_stream(text, voice):
+        for frame in generator:
             self.wfile.write(frame)
             self.wfile.flush()
             total_bytes += len(frame)
             chunk_count += 1
-            print(f'[cosyvoice-server] Streamed chunk {chunk_count}: {len(frame)} bytes', flush=True)
+            print(f'[cosyvoice-server] Streamed chunk {chunk_count}: {len(frame)} bytes (fmt={fmt or "wav"})', flush=True)
 
         print(f'[cosyvoice-server] Stream complete: {chunk_count} chunks, {total_bytes} bytes total', flush=True)
 
 
+class ThreadingHTTPServer(ThreadingMixIn, HTTPServer):
+    """HTTPServer that handles each request in a new thread for concurrent TTS."""
+    daemon_threads = True
+
+
 def main():
-    server = HTTPServer(('0.0.0.0', args.port), CosyVoiceHandler)
+    server = ThreadingHTTPServer(('0.0.0.0', args.port), CosyVoiceHandler)
     print(f'[cosyvoice-server] Listening on http://0.0.0.0:{args.port}', flush=True)
     try:
         server.serve_forever()

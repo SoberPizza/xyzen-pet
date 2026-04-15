@@ -23,6 +23,12 @@ import { createPushStream } from './stream'
 export interface SpeechPipelineOptions<TAudio> {
   tts: (request: TtsRequest, signal: AbortSignal) => Promise<TAudio | null>
   /**
+   * Optional streaming TTS generator. When provided and returning a non-empty async iterable,
+   * the pipeline schedules audio chunks incrementally instead of waiting for the full result.
+   * Falls back to `tts` when absent or when the generator returns immediately.
+   */
+  ttsStream?: (request: TtsRequest, signal: AbortSignal) => AsyncIterable<TAudio>
+  /**
    * Maximum number of concurrent TTS generation tasks. Default is 4. Must be at least 1.
    *
    * @default 4
@@ -94,9 +100,26 @@ export function createSpeechPipeline<TAudio>(options: SpeechPipelineOptions<TAud
     const tokenStream = intent.stream
     const segmentStream = segmenter(tokenStream, { streamId: intent.streamId, intentId: intent.intentId })
     const completedRequests = new Map<number, TtsResult<TAudio> | null>()
+    const streamingContinuation = new Map<number, TtsResult<TAudio>[]>()
     const inFlightTasks = new Set<Promise<void>>()
     let nextRequestSequence = 0
     let nextSequenceToSchedule = 0
+
+    function schedulePlaybackItem(result: TtsResult<TAudio>) {
+      options.playback.schedule({
+        id: createId('playback'),
+        streamId: result.streamId,
+        intentId: result.intentId,
+        segmentId: result.segmentId,
+        sequence: result.sequence,
+        ownerId: intent.ownerId,
+        priority: intent.priority,
+        text: result.text,
+        special: result.special,
+        audio: result.audio,
+        createdAt: Date.now(),
+      })
+    }
 
     function scheduleCompletedRequests() {
       while (completedRequests.has(nextSequenceToSchedule)) {
@@ -104,19 +127,16 @@ export function createSpeechPipeline<TAudio>(options: SpeechPipelineOptions<TAud
         completedRequests.delete(nextSequenceToSchedule)
 
         if (completedRequest) {
-          options.playback.schedule({
-            id: createId('playback'),
-            streamId: completedRequest.streamId,
-            intentId: completedRequest.intentId,
-            segmentId: completedRequest.segmentId,
-            sequence: completedRequest.sequence,
-            ownerId: intent.ownerId,
-            priority: intent.priority,
-            text: completedRequest.text,
-            special: completedRequest.special,
-            audio: completedRequest.audio,
-            createdAt: Date.now(),
-          })
+          schedulePlaybackItem(completedRequest)
+        }
+
+        // Drain any streaming continuation chunks for this sequence
+        const continuation = streamingContinuation.get(nextSequenceToSchedule)
+        if (continuation) {
+          for (const chunk of continuation) {
+            schedulePlaybackItem(chunk)
+          }
+          streamingContinuation.delete(nextSequenceToSchedule)
         }
 
         nextSequenceToSchedule += 1
@@ -170,6 +190,61 @@ export function createSpeechPipeline<TAudio>(options: SpeechPipelineOptions<TAud
       return task
     }
 
+    function createTtsStreamTask(request: TtsRequest) {
+      const task = (async () => {
+        let isFirst = true
+        try {
+          for await (const audio of options.ttsStream!(request, intent.controller.signal)) {
+            if (intent.controller.signal.aborted)
+              break
+
+            const result: TtsResult<TAudio> = {
+              streamId: request.streamId,
+              intentId: request.intentId,
+              segmentId: `${request.segmentId}:${isFirst ? 'head' : Date.now()}`,
+              sequence: request.sequence,
+              text: isFirst ? request.text : '',
+              special: isFirst ? request.special : null,
+              audio,
+              createdAt: Date.now(),
+            }
+
+            if (isFirst) {
+              context.emit(speechPipelineEventMap.onTtsResult, result)
+              completedRequests.set(request.sequence, result)
+              scheduleCompletedRequests()
+              isFirst = false
+            }
+            else if (request.sequence < nextSequenceToSchedule) {
+              // Already past this sequence's turn, schedule directly
+              schedulePlaybackItem(result)
+            }
+            else {
+              // Buffer for when this sequence's turn comes
+              const buf = streamingContinuation.get(request.sequence) ?? []
+              buf.push(result)
+              streamingContinuation.set(request.sequence, buf)
+            }
+          }
+        }
+        catch (err) {
+          if (!intent.controller.signal.aborted)
+            logger.warn('TTS stream failed:', err)
+        }
+
+        if (isFirst) {
+          // Stream produced nothing — mark as completed with null
+          completedRequests.set(request.sequence, null)
+          scheduleCompletedRequests()
+        }
+      })().finally(() => {
+        inFlightTasks.delete(task)
+      })
+
+      inFlightTasks.add(task)
+      return task
+    }
+
     try {
       const reader = segmentStream.getReader()
 
@@ -207,7 +282,12 @@ export function createSpeechPipeline<TAudio>(options: SpeechPipelineOptions<TAud
         }
 
         context.emit(speechPipelineEventMap.onTtsRequest, request)
-        createTtsTask(request)
+        if (options.ttsStream) {
+          createTtsStreamTask(request)
+        }
+        else {
+          createTtsTask(request)
+        }
       }
 
       await Promise.allSettled(inFlightTasks)

@@ -50,10 +50,26 @@ export const providerLlamaCppLocal = defineProvider<LlamaCppLocalConfig>({
     }),
   }),
   createProvider(config) {
-    return merge(
+    const base = merge(
       createChatProvider({ baseURL: config.baseUrl! }),
       createModelProvider({ baseURL: config.baseUrl! }),
     )
+
+    return {
+      ...base,
+      // NOTICE: Small local models (e.g. Qwen3-1.7B) default to think mode which
+      // generates lengthy internal reasoning before the actual response, causing
+      // unacceptable latency for real-time interaction. Inject `think: false` to disable.
+      // NOTICE: llama.cpp does not support xsai's `think` parameter natively;
+      // it uses `chat_template_kwargs` to control Qwen3's thinking mode.
+      chat(model: string) {
+        return {
+          ...base.chat(model),
+          think: false,
+          body: { chat_template_kwargs: { enable_thinking: false } },
+        }
+      },
+    }
   },
 
   requiresCredentials: false,

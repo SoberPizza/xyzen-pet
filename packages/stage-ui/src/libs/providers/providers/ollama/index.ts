@@ -12,7 +12,7 @@ const ollamaConfigSchema = z.object({
   baseUrl: z.string()
     .default('http://localhost:11434/v1/'),
   thinkingMode: z.enum(['auto', 'disable', 'enable', 'low', 'medium', 'high'])
-    .default('auto'),
+    .default('disable'),
   headers: z.record(z.string(), z.string())
     .optional(),
 })

@@ -65,6 +65,7 @@ export const useAiriCardStore = defineStore('airi-card', () => {
 
   const cards = useLocalStorageManualReset<Map<string, AiriCard>>('airi-cards', new Map())
   const activeCardId = useLocalStorageManualReset<string>('airi-card-active-id', 'default')
+  const defaultCardDescriptionCustomized = useLocalStorageManualReset<boolean>('airi-card-default-description-customized', false)
 
   const activeCard = computed(() => cards.value.get(activeCardId.value))
 
@@ -250,9 +251,24 @@ export const useAiriCardStore = defineStore('airi-card', () => {
     }
   })
 
+  /**
+   * Bake the current i18n-generated description into the default card's persisted description
+   * so the user can freely edit it. Call this when the user first edits the default card's description.
+   */
+  function customizeDefaultCardDescription() {
+    const defaultCard = cards.value.get('default')
+    if (!defaultCard)
+      return
+
+    defaultCard.description = SystemPromptV2(t('base.prompt.prefix'), t('base.prompt.suffix')).content
+    cards.value.set('default', { ...defaultCard })
+    defaultCardDescriptionCustomized.value = true
+  }
+
   function resetState() {
     activeCardId.reset()
     cards.reset()
+    defaultCardDescriptionCustomized.reset()
   }
 
   return {
@@ -263,6 +279,8 @@ export const useAiriCardStore = defineStore('airi-card', () => {
     removeCard,
     updateCard,
     getCard,
+    defaultCardDescriptionCustomized,
+    customizeDefaultCardDescription,
     resetState,
     initialize,
 
@@ -288,8 +306,9 @@ export const useAiriCardStore = defineStore('airi-card', () => {
 
       // NOTICE: The default card's description was baked from i18n at first launch and persisted.
       // Always use the current locale's system prompt so language switches take effect immediately
-      // without requiring the user to manually regenerate the card.
-      const description = activeCardId.value === 'default'
+      // without requiring the user to manually regenerate the card — unless the user has explicitly
+      // customized the default card's description via the card editor.
+      const description = (activeCardId.value === 'default' && !defaultCardDescriptionCustomized.value)
         ? SystemPromptV2(t('base.prompt.prefix'), t('base.prompt.suffix')).content
         : card.description
 

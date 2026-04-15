@@ -13,6 +13,7 @@ import {
 
 import { onAppBeforeQuit } from '../../../libs/bootkit/lifecycle'
 import { detectGpu } from './gpu-detection'
+import { createLlamaService } from './llama-service'
 import { selectProfile } from './model-profiles'
 import { checkOllama, createOllamaServiceConfig, ensureOllamaModel, getOllamaServiceInfo, preloadOllamaModel } from './ollama-service'
 import { checkPython, createCosyvoiceService, createFunasrService } from './python-services'
@@ -44,33 +45,47 @@ export async function setupLocalAIServiceManager() {
     log.withError(err).warn('Auto-start of CosyVoice TTS service failed (non-fatal)')
   })
 
-  // Register Ollama as an external service for status tracking
-  const ollamaInfo = getOllamaServiceInfo(profile)
-  const ollamaConfig = createOllamaServiceConfig({ model: ollamaInfo.model, baseUrl: ollamaInfo.baseUrl })
-  manager.registerService(ollamaConfig)
+  // LLM backend selection: CUDA GPU → Ollama, CPU/Metal → llama-server
+  if (gpu.accelerator === 'cuda' && gpu.meetsMinimum) {
+    // CUDA GPU environment → use Ollama for larger model support
+    const ollamaInfo = getOllamaServiceInfo(profile)
+    const ollamaConfig = createOllamaServiceConfig({ model: ollamaInfo.model, baseUrl: ollamaInfo.baseUrl })
+    manager.registerService(ollamaConfig)
 
-  // Check Ollama availability and ensure the model is pulled
-  const ollamaStatus = await checkOllama(ollamaInfo.baseUrl)
-  if (ollamaStatus.ollamaFound) {
-    log.withFields({ version: ollamaStatus.version, models: ollamaStatus.models }).log('Ollama detected')
-    ensureOllamaModel(ollamaInfo.model, ollamaInfo.baseUrl).then(async (ok) => {
-      if (ok) {
-        // Preload model into GPU memory with keep_alive=-1 to eliminate cold-start latency (~1.1s → ~50ms)
-        await preloadOllamaModel(ollamaInfo.model, ollamaInfo.baseUrl)
-        log.withFields({ model: ollamaInfo.model }).log('Ollama model preloaded into GPU memory')
-        manager.start('ollama').catch((err) => {
-          log.withError(err).warn('Ollama readiness check failed (non-fatal)')
-        })
-      }
-      else {
-        log.warn(`Failed to ensure Ollama model ${ollamaInfo.model} is available`)
-      }
-    }).catch((err) => {
-      log.withError(err).warn('Failed to pull Ollama model (non-fatal)')
-    })
+    const ollamaStatus = await checkOllama(ollamaInfo.baseUrl)
+    if (ollamaStatus.ollamaFound) {
+      log.withFields({ version: ollamaStatus.version, models: ollamaStatus.models }).log('Ollama detected')
+      ensureOllamaModel(ollamaInfo.model, ollamaInfo.baseUrl).then(async (ok) => {
+        if (ok) {
+          await preloadOllamaModel(ollamaInfo.model, ollamaInfo.baseUrl)
+          log.withFields({ model: ollamaInfo.model }).log('Ollama model preloaded into GPU memory')
+          manager.start('ollama').catch((err) => {
+            log.withError(err).warn('Ollama readiness check failed (non-fatal)')
+          })
+        }
+        else {
+          log.warn(`Failed to ensure Ollama model ${ollamaInfo.model} is available`)
+        }
+      }).catch((err) => {
+        log.withError(err).warn('Failed to pull Ollama model (non-fatal)')
+      })
+    }
+    else {
+      log.warn('Ollama not detected, local LLM will not be available')
+    }
   }
   else {
-    log.warn('Ollama not detected, local LLM will not be available')
+    // CPU / Metal environment → use llama-server (lightweight, installed via postinstall)
+    const llamaConfig = createLlamaService(profile)
+    if (llamaConfig) {
+      manager.registerService(llamaConfig)
+      manager.start('llama-server').catch((err) => {
+        log.withError(err).warn('Auto-start of llama-server failed (non-fatal)')
+      })
+    }
+    else {
+      log.warn('llama-server not available, local LLM will not be available')
+    }
   }
 
   return manager

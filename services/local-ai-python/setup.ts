@@ -123,22 +123,48 @@ async function ensureVenv(): Promise<string> {
   return venvPython
 }
 
-// --- GPU detection ---
+// --- GPU / hardware detection ---
 
-/** Check whether an NVIDIA GPU is present by probing nvidia-smi. */
-async function detectCuda(): Promise<boolean> {
+interface HardwareInfo {
+  hasCuda: boolean
+  vramMb: number
+  gpuName: string
+}
+
+/**
+ * Detect NVIDIA GPU presence, name, and VRAM via nvidia-smi.
+ * Uses the same query format as gpu-detection.ts for consistency.
+ */
+async function detectHardware(): Promise<HardwareInfo> {
   try {
-    const { stdout } = await exec('nvidia-smi', ['--query-gpu=name', '--format=csv,noheader'])
+    const { stdout } = await exec('nvidia-smi', ['--query-gpu=name,memory.total', '--format=csv,noheader,nounits'])
     if (stdout.trim()) {
-      console.log(`[setup] NVIDIA GPU detected: ${stdout.trim().split('\n')[0]}`)
-      return true
+      // Parse CSV: "GPU Name, VRAM_MB" per line. Pick the one with most VRAM.
+      let bestName = ''
+      let bestVram = 0
+      for (const line of stdout.trim().split('\n')) {
+        const parts = line.split(',').map(s => s.trim())
+        if (parts.length < 2)
+          continue
+        const name = parts[0]
+        const vram = Number.parseInt(parts[1], 10)
+        if (!Number.isNaN(vram) && vram > bestVram) {
+          bestName = name
+          bestVram = vram
+        }
+      }
+      if (bestVram > 0) {
+        const profile = bestVram >= 8192 ? 'GPU' : 'CPU (VRAM < 8 GB)'
+        console.log(`[setup] Hardware: ${bestName} (${bestVram} MB VRAM) → ${profile} profile`)
+        return { hasCuda: true, vramMb: bestVram, gpuName: bestName }
+      }
     }
   }
   catch {
     // nvidia-smi not found or failed
   }
-  console.log('[setup] No NVIDIA GPU detected, will install CPU-only PyTorch.')
-  return false
+  console.log('[setup] Hardware: No CUDA GPU detected → CPU profile')
+  return { hasCuda: false, vramMb: 0, gpuName: '' }
 }
 
 // --- PyTorch install ---
@@ -346,8 +372,8 @@ async function main() {
   const python = await ensureVenv()
 
   // Detect GPU and install PyTorch with the appropriate variant (CUDA or CPU)
-  const hasCuda = await detectCuda()
-  await installTorch(python, hasCuda)
+  const hw = await detectHardware()
+  await installTorch(python, hw.hasCuda)
 
   // Install remaining Python dependencies from requirements.txt
   await pipInstall(python)

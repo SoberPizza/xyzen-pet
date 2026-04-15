@@ -14,6 +14,8 @@ import {
   esp32BridgeDisconnectEventa,
   esp32BridgeGetStatusEventa,
   esp32BridgeListenEventa,
+  esp32BridgeSendAudioEventa,
+  esp32BridgeSendTtsStateEventa,
   esp32BridgeStatusChangeEventa,
 } from '@proj-airi/stage-shared/esp32-bridge'
 
@@ -26,6 +28,9 @@ export function createESP32BridgeService(params: {
 
   let bridge: XiaozhiBridge | null = null
   let opusDecoder: OpusScript | null = null
+  let opusEncoder: OpusScript | null = null
+  let serverSampleRate: 8000 | 12000 | 16000 | 24000 | 48000 = 24000
+  let serverFrameDuration = 60
   let currentStatus: ESP32BridgeStatus = { state: 'disconnected' }
 
   function updateStatus(status: ESP32BridgeStatus) {
@@ -41,6 +46,9 @@ export function createESP32BridgeService(params: {
     }
     if (opusDecoder) {
       opusDecoder = null
+    }
+    if (opusEncoder) {
+      opusEncoder = null
     }
   }
 
@@ -72,11 +80,15 @@ export function createESP32BridgeService(params: {
         frameDuration: deviceHello.audio_params.frame_duration,
       }).log('ESP32 audio channel opened')
 
+      const rate = deviceHello.audio_params.sample_rate as 8000 | 12000 | 16000 | 24000 | 48000
+      serverSampleRate = rate
+      serverFrameDuration = deviceHello.audio_params.frame_duration
+
       // Initialize Opus decoder with device's sample rate (typically 16000 Hz mono)
-      opusDecoder = new OpusScript(
-        deviceHello.audio_params.sample_rate as 8000 | 12000 | 16000 | 24000 | 48000,
-        deviceHello.audio_params.channels,
-      )
+      opusDecoder = new OpusScript(rate, deviceHello.audio_params.channels)
+
+      // Initialize Opus encoder for sending TTS audio to the device
+      opusEncoder = new OpusScript(rate, deviceHello.audio_params.channels, OpusScript.Application.AUDIO)
 
       updateStatus({
         state: 'active',
@@ -144,6 +156,67 @@ export function createESP32BridgeService(params: {
 
   defineInvokeHandler(params.context, esp32BridgeGetStatusEventa, async () => {
     return currentStatus
+  })
+
+  /** Resample PCM16 from srcRate to dstRate using linear interpolation. */
+  function resamplePCM16(input: Int16Array, srcRate: number, dstRate: number): Int16Array {
+    if (srcRate === dstRate)
+      return input
+    const ratio = srcRate / dstRate
+    const outLen = Math.round(input.length / ratio)
+    const output = new Int16Array(outLen)
+    for (let i = 0; i < outLen; i++) {
+      const srcIdx = i * ratio
+      const low = Math.floor(srcIdx)
+      const high = Math.min(low + 1, input.length - 1)
+      const frac = srcIdx - low
+      output[i] = Math.round(input[low] * (1 - frac) + input[high] * frac)
+    }
+    return output
+  }
+
+  defineInvokeHandler(params.context, esp32BridgeSendAudioEventa, async ({ pcm16, sampleRate }) => {
+    if (!bridge || !opusEncoder) {
+      log.warn('Cannot send audio: bridge or encoder not ready')
+      return
+    }
+
+    // Resample to server rate if needed
+    const resampled = resamplePCM16(pcm16, sampleRate, serverSampleRate)
+
+    // Split into frames and encode
+    const frameSamples = Math.round(serverSampleRate * serverFrameDuration / 1000)
+    for (let offset = 0; offset < resampled.length; offset += frameSamples) {
+      const end = Math.min(offset + frameSamples, resampled.length)
+      const frame = resampled.subarray(offset, end)
+
+      // Pad last frame if shorter than expected
+      let frameToEncode: Int16Array
+      if (frame.length < frameSamples) {
+        frameToEncode = new Int16Array(frameSamples)
+        frameToEncode.set(frame)
+      }
+      else {
+        frameToEncode = frame
+      }
+
+      try {
+        const encoded = opusEncoder.encode(Buffer.from(frameToEncode.buffer, frameToEncode.byteOffset, frameToEncode.byteLength), frameSamples)
+        if (encoded)
+          bridge.sendAudio(new Uint8Array(encoded))
+      }
+      catch (err) {
+        log.withFields({ error: err }).warn('Failed to encode Opus frame for TTS output')
+      }
+    }
+  })
+
+  defineInvokeHandler(params.context, esp32BridgeSendTtsStateEventa, async ({ state, text }) => {
+    if (!bridge) {
+      log.warn('Cannot send TTS state: bridge not connected')
+      return
+    }
+    bridge.sendTtsState(state, text)
   })
 
   onAppBeforeQuit(async () => {

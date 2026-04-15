@@ -301,6 +301,16 @@ export const useChatOrchestratorStore = defineStore('chat-orchestrator', () => {
         return rawMessage
       })
 
+      // Trim conversation history to fit within small model context windows.
+      // Keep the system message (index 0) + the most recent N messages.
+      const MAX_CONTEXT_MESSAGES = 20
+      if (newMessages.length > MAX_CONTEXT_MESSAGES + 1) {
+        const systemMessage = newMessages[0]
+        const recentMessages = newMessages.slice(-(MAX_CONTEXT_MESSAGES))
+        newMessages.length = 0
+        newMessages.push(systemMessage, ...recentMessages)
+      }
+
       const contextsSnapshot = chatContext.getContextsSnapshot()
       const contextPromptText = formatContextPromptText(contextsSnapshot)
       if (contextPromptText) {

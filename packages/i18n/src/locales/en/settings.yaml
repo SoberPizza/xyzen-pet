@@ -563,6 +563,14 @@ pages:
       description: Speech synthesis
       sections:
         section:
+          audio-output-target:
+            title: Audio Output Target
+            description: Choose where generated speech is played
+            speaker: Speaker
+            speaker-description: Play audio through your computer's speakers
+            esp32: ESP32 Device
+            esp32-description: Send audio to Xiaozhi ESP32 hardware device
+            esp32-not-connected: ESP32 device is not connected. Connect it in Hearing settings.
           playground:
             buttons:
               stop:

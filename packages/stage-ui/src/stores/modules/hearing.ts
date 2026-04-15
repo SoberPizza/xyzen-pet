@@ -6,7 +6,7 @@ import type { EmotionPayload } from '../../constants/emotions'
 
 import { errorMessageFrom, tryCatch } from '@moeru/std'
 import { useLocalStorageManualReset } from '@proj-airi/stage-shared/composables'
-import { refManualReset } from '@vueuse/core'
+import { refManualReset, useLocalStorage } from '@vueuse/core'
 import { generateTranscription } from '@xsai/generate-transcription'
 import { defineStore, storeToRefs } from 'pinia'
 import { computed, ref, shallowRef, watch } from 'vue'
@@ -118,6 +118,11 @@ export const useHearingStore = defineStore('hearing-store', () => {
   const autoSendDelay = useLocalStorageManualReset<number>('settings/hearing/auto-send-delay', 2000) // Default 2 seconds
   const confidenceThreshold = useLocalStorageManualReset<number>('settings/hearing/confidence-threshold', CONFIDENCE_THRESHOLD_DISABLED)
   const verboseJsonNotSupported = ref(false)
+
+  // Wake word configuration
+  const wakeWordEnabled = useLocalStorage('hearing-wake-word-enabled', true)
+  const wakeWord = useLocalStorage('hearing-wake-word', '小玄子')
+  const wakeWordTimeout = useLocalStorage('hearing-wake-word-timeout', 10000)
 
   watch(activeTranscriptionProvider, () => {
     verboseJsonNotSupported.value = false
@@ -290,6 +295,9 @@ export const useHearingStore = defineStore('hearing-store', () => {
     autoSendDelay,
     confidenceThreshold,
     verboseJsonNotSupported,
+    wakeWordEnabled,
+    wakeWord,
+    wakeWordTimeout,
 
     supportsModelListing,
     providerModels,
@@ -351,10 +359,13 @@ export const useHearingSpeechInputPipeline = defineStore('modules:hearing:speech
    */
   function createVADGatedAudioStream(isSpeech: import('vue').Ref<boolean>) {
     let controller: ReadableStreamDefaultController<ArrayBuffer> | undefined
-    // NOTICE: ~80ms lookback at 16kHz 16-bit mono = 2560 bytes.
-    // This prevents pre-speech clipping since Silero VAD has inherent detection latency.
-    const LOOKBACK_SAMPLES = 1280 // 80ms at 16kHz
-    let lookbackBuffer: Float32Array | null = null
+    // NOTICE: 300ms ring-buffer lookback at 16kHz covers Silero VAD detection latency
+    // (typically 1-3 chunks × 32ms = 32-96ms). The previous 80ms single-chunk buffer
+    // was too small, causing the first 1-2 characters of speech to be lost.
+    const LOOKBACK_MS = 300
+    const LOOKBACK_SAMPLES = Math.ceil((LOOKBACK_MS / 1000) * 16000) // 4800 samples
+    const lookbackRing: Float32Array[] = []
+    let lookbackRingSamples = 0
 
     const audioStream = new ReadableStream<ArrayBuffer>({
       start(c) {
@@ -370,23 +381,26 @@ export const useHearingSpeechInputPipeline = defineStore('modules:hearing:speech
         return
 
       if (isSpeech.value) {
-        // Flush lookback buffer on speech start (first frame of speech)
-        if (lookbackBuffer) {
-          const pcm16 = float32ToInt16(lookbackBuffer)
-          controller.enqueue(pcm16.buffer.slice(0) as ArrayBuffer)
-          lookbackBuffer = null
+        // Flush all accumulated pre-speech audio from the ring buffer
+        if (lookbackRing.length > 0) {
+          for (const chunk of lookbackRing) {
+            const pcm16 = float32ToInt16(chunk)
+            controller.enqueue(pcm16.buffer.slice(0) as ArrayBuffer)
+          }
+          lookbackRing.length = 0
+          lookbackRingSamples = 0
         }
 
         const pcm16 = float32ToInt16(buffer)
         controller.enqueue(pcm16.buffer.slice(0) as ArrayBuffer)
       }
       else {
-        // Store last chunk as lookback for next speech start
-        if (buffer.length <= LOOKBACK_SAMPLES) {
-          lookbackBuffer = new Float32Array(buffer)
-        }
-        else {
-          lookbackBuffer = buffer.slice(buffer.length - LOOKBACK_SAMPLES)
+        // Maintain a ring buffer of recent silence chunks for lookback
+        lookbackRing.push(new Float32Array(buffer))
+        lookbackRingSamples += buffer.length
+        while (lookbackRingSamples > LOOKBACK_SAMPLES && lookbackRing.length > 1) {
+          lookbackRingSamples -= lookbackRing[0].length
+          lookbackRing.shift()
         }
       }
     }
@@ -394,7 +408,8 @@ export const useHearingSpeechInputPipeline = defineStore('modules:hearing:speech
     function close() {
       controller?.close()
       controller = undefined
-      lookbackBuffer = null
+      lookbackRing.length = 0
+      lookbackRingSamples = 0
     }
 
     return { audioStream, feedAudio, close }

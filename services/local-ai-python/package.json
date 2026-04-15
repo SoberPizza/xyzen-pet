@@ -7,7 +7,7 @@
   "scripts": {
     "postinstall": "tsx setup.ts",
     "dev:funasr": ".venv/bin/python servers/funasr-server.py --model iic/SenseVoiceSmall --vad-model '' --device cpu --port 10095",
-    "dev:cosyvoice": ".venv/bin/python servers/cosyvoice-server.py --port 10097 --device cpu"
+    "dev:cosyvoice": ".venv/bin/python servers/cosyvoice-server.py --port 10097 --device cpu --model iic/CosyVoice-300M-SFT"
   },
   "devDependencies": {
     "tsx": "catalog:"

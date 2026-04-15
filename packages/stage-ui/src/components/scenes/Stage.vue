@@ -24,6 +24,7 @@ import { generateSpeech } from '@xsai/generate-speech'
 import { storeToRefs } from 'pinia'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 
+import { useESP32AudioOutput } from '../../composables/audio/esp32-audio-output'
 import { useDelayMessageQueue, useEmotionsMessageQueue } from '../../composables/queues'
 import { useAuthProviderSync } from '../../composables/use-auth-provider-sync'
 import { llmInferenceEndToken } from '../../constants'
@@ -36,6 +37,7 @@ import { useHearingEmotionStore } from '../../stores/modules/hearing-emotion'
 import { useSpeechStore } from '../../stores/modules/speech'
 import { useProvidersStore } from '../../stores/providers'
 import { useSettings } from '../../stores/settings'
+import { useSettingsAudioDevice } from '../../stores/settings/audio-device'
 import { useSpeechRuntimeStore } from '../../stores/speech-runtime'
 import { shouldRunLive2dLipSyncLoop } from './runtime'
 
@@ -78,6 +80,8 @@ const lightOrbDebug = useLightOrbDebugStore()
 const { mouthOpenSize } = storeToRefs(useSpeakingStore())
 const { audioContext } = useAudioContext()
 const currentAudioSource = ref<AudioBufferSourceNode>()
+const { audioOutputTarget } = storeToRefs(useSettingsAudioDevice())
+const esp32AudioOutput = useESP32AudioOutput()
 
 const { onBeforeMessageComposed, onBeforeSend, onTokenLiteral, onTokenSpecial, onStreamEnd, onAssistantResponseEnd } = useChatOrchestratorStore()
 const chatHookCleanups: Array<() => void> = []
@@ -184,6 +188,63 @@ async function playFunction(item: Parameters<Parameters<typeof createPlaybackMan
     }
   }
 
+  // Route to ESP32: send PCM16 via IPC, still run analyser/lipSync locally (no speaker output)
+  if (audioOutputTarget.value === 'esp32') {
+    esp32AudioOutput.sendAudio(item.audio).catch((err) => {
+      console.warn('[Stage] Failed to send audio to ESP32', err)
+    })
+
+    // Still set up a local source for analyser/lipSync visualization (muted)
+    const source = audioContext.createBufferSource()
+    currentAudioSource.value = source
+    source.buffer = item.audio
+    // Do NOT connect to destination (no local speaker)
+    if (audioAnalyser.value)
+      source.connect(audioAnalyser.value)
+    if (lipSyncNode.value)
+      source.connect(lipSyncNode.value)
+
+    return new Promise<void>((resolve) => {
+      let settled = false
+      const resolveOnce = () => {
+        if (settled)
+          return
+        settled = true
+        resolve()
+      }
+
+      const stopPlayback = () => {
+        try {
+          source.stop()
+          source.disconnect()
+        }
+        catch {}
+        if (currentAudioSource.value === source)
+          currentAudioSource.value = undefined
+        resolveOnce()
+      }
+
+      if (signal.aborted) {
+        stopPlayback()
+        return
+      }
+
+      signal.addEventListener('abort', stopPlayback, { once: true })
+      source.onended = () => {
+        signal.removeEventListener('abort', stopPlayback)
+        stopPlayback()
+      }
+
+      try {
+        source.start(0)
+      }
+      catch {
+        stopPlayback()
+      }
+    })
+  }
+
+  // Default: play through local speaker
   const source = audioContext.createBufferSource()
   currentAudioSource.value = source
   source.buffer = item.audio
@@ -361,6 +422,67 @@ const speechPipeline = createSpeechPipeline<AudioBuffer>({
       return null
     }
   },
+  async* ttsStream(request, signal) {
+    // Only CosyVoice local server supports streaming TTS
+    if (activeSpeechProvider.value !== 'cosyvoice-local-server')
+      return
+
+    const metadata = providersStore.getProviderMetadata(activeSpeechProvider.value)
+    if (!metadata?.capabilities?.generateSpeechStream)
+      return
+
+    const providerConfig = providersStore.getProviderConfig(activeSpeechProvider.value)
+    let voice = activeSpeechVoice.value
+    if (!voice && speechStore.activeSpeechVoiceId) {
+      voice = {
+        id: speechStore.activeSpeechVoiceId,
+        name: speechStore.activeSpeechVoiceId,
+        description: '',
+        previewURL: '',
+        languages: [{ code: 'zh-CN', title: 'Chinese' }],
+        provider: activeSpeechProvider.value,
+        gender: 'neutral',
+      }
+    }
+
+    if (!voice || !request.text)
+      return
+
+    const input = ssmlEnabled.value
+      ? speechStore.generateSSML(request.text, voice, { ...providerConfig, pitch: pitch.value })
+      : request.text
+
+    const stream = await metadata.capabilities.generateSpeechStream(providerConfig ?? {}, input, voice.id)
+    const reader = stream.getReader()
+
+    try {
+      while (!signal.aborted) {
+        const { done, value } = await reader.read()
+        if (done)
+          break
+
+        // NOTICE: CosyVoice raw_pcm format tags buffers with __pcmSampleRate.
+        // Convert raw PCM int16 LE directly to AudioBuffer, skipping decodeAudioData()
+        // which adds 10-50ms overhead per chunk.
+        const pcmSampleRate = (value as any).__pcmSampleRate as number | undefined
+        if (pcmSampleRate) {
+          const int16 = new Int16Array(value)
+          const audioBuffer = audioContext.createBuffer(1, int16.length, pcmSampleRate)
+          const channelData = audioBuffer.getChannelData(0)
+          for (let i = 0; i < int16.length; i++)
+            channelData[i] = int16[i] / 32768
+          yield audioBuffer
+        }
+        else {
+          const audioBuffer = await audioContext.decodeAudioData(value)
+          yield audioBuffer
+        }
+      }
+    }
+    finally {
+      reader.releaseLock()
+    }
+  },
   playback: playbackManager,
 })
 
@@ -381,10 +503,16 @@ playbackManager.onEnd(({ item }) => {
 
   nowSpeaking.value = false
   mouthOpenSize.value = 0
+
+  if (audioOutputTarget.value === 'esp32')
+    esp32AudioOutput.sendTtsState('stop').catch(() => {})
 })
 
 playbackManager.onStart(({ item }) => {
   nowSpeaking.value = true
+
+  if (audioOutputTarget.value === 'esp32')
+    esp32AudioOutput.sendTtsState('sentence_start', item.text).catch(() => {})
   // NOTICE: postCaption and postPresent may throw errors if the BroadcastChannel is closed
   // (e.g., when navigating away from the page). We wrap these in try-catch to prevent
   // breaking playback when the channel is unavailable.
@@ -489,6 +617,9 @@ let currentChatIntent: ReturnType<typeof speechRuntimeStore.openIntent> | null =
 
 chatHookCleanups.push(onBeforeMessageComposed(async () => {
   console.info('[Stage] onBeforeMessageComposed → opening speech intent')
+
+  if (audioOutputTarget.value === 'esp32')
+    esp32AudioOutput.sendTtsState('start').catch(() => {})
   playbackManager.stopAll('new-message')
 
   setupAnalyser()
@@ -612,6 +743,7 @@ function readRenderTargetRegionAtClientPoint(clientX: number, clientY: number, r
 onUnmounted(() => {
   resetLive2dLipSync()
   removeHearingEmotionListener()
+  esp32AudioOutput.dispose()
   chatHookCleanups.forEach(dispose => dispose?.())
   viewUpdateCleanups.forEach(dispose => dispose?.())
 })

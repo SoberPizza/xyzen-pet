@@ -100,6 +100,8 @@ export function createCosyvoiceService(profile: ModelProfile): LocalAIServiceCon
         '10097',
         '--device',
         profile.cosyvoice.device,
+        '--model',
+        profile.cosyvoice.model,
       ]
     },
     port: 10097,
