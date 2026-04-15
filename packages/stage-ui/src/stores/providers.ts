@@ -134,6 +134,7 @@ export interface ProviderMetadata {
     listModels?: (config: Record<string, unknown>) => Promise<ModelInfo[]>
     listVoices?: (config: Record<string, unknown>) => Promise<VoiceInfo[]>
     loadModel?: (config: Record<string, unknown>, hooks?: { onProgress?: (progress: ProgressInfo) => Promise<void> | void }) => Promise<void>
+    generateSpeechStream?: (config: Record<string, unknown>, input: string, voice: string) => Promise<ReadableStream<ArrayBuffer>>
   }
   validators: {
     /**
@@ -1419,6 +1420,61 @@ export const useProvidersStore = defineStore('providers', () => {
           catch {
             return []
           }
+        },
+
+        /**
+         * Stream speech generation: returns a ReadableStream of independent WAV ArrayBuffers.
+         * The server sends length-prefixed frames: [4-byte big-endian length][WAV bytes] per chunk.
+         * Each chunk is a complete, independently decodable WAV file.
+         */
+        generateSpeechStream: async (config: Record<string, unknown>, input: string, voice: string): Promise<ReadableStream<ArrayBuffer>> => {
+          const baseUrl = typeof config.baseUrl === 'string' ? config.baseUrl.trim() : 'http://localhost:10097'
+          const res = await fetch(`${baseUrl}/v1/audio/speech`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ input, voice, stream: true }),
+          })
+
+          if (!res.ok || !res.body)
+            throw new Error(`CosyVoice streaming request failed: ${res.status}`)
+
+          const reader = res.body.getReader()
+
+          // Parse length-prefixed frames into independent WAV ArrayBuffers
+          return new ReadableStream<ArrayBuffer>({
+            async pull(controller) {
+              let buffer = new Uint8Array(0)
+
+              while (true) {
+                const { done, value } = await reader.read()
+                if (done) {
+                  controller.close()
+                  return
+                }
+
+                // Append new data to buffer
+                const merged = new Uint8Array(buffer.length + value.length)
+                merged.set(buffer)
+                merged.set(value, buffer.length)
+                buffer = merged
+
+                // Try to extract complete frames from buffer
+                while (buffer.length >= 4) {
+                  const view = new DataView(buffer.buffer, buffer.byteOffset, 4)
+                  const chunkLen = view.getUint32(0, false) // big-endian
+                  if (buffer.length < 4 + chunkLen)
+                    break // not enough data yet
+
+                  const wavBytes = buffer.slice(4, 4 + chunkLen).buffer
+                  controller.enqueue(wavBytes)
+                  buffer = buffer.slice(4 + chunkLen)
+                }
+              }
+            },
+            cancel() {
+              reader.cancel()
+            },
+          })
         },
       },
 

@@ -5,6 +5,7 @@ import { createQueue } from '@proj-airi/stream-kit'
 import { animate } from 'animejs'
 import { ref } from 'vue'
 
+import { createAudioManager, disposeAudioManager, playAudioStream, startVolumeTracking, stopVolumeTracking } from '../../../libs/audio/manager'
 import { useAudioContext } from '../../../stores/audio'
 import { chunkTTSInput } from '../../../utils/tts'
 
@@ -12,6 +13,7 @@ const props = defineProps<{
   text: string
   // Provider-specific handlers (provided from parent)
   generateSpeech: (input: string, voice: string, useSSML: boolean) => Promise<ArrayBuffer>
+  generateSpeechStream?: (input: string, voice: string) => Promise<ReadableStream<ArrayBuffer>>
   voice: string
 }>()
 
@@ -19,6 +21,8 @@ const { audioContext } = useAudioContext()
 const nowSpeaking = ref(false)
 const ttsInputChunks = ref<TTSInputChunk[]>([])
 const speechGenerationIndex = ref(-1)
+const isStreamPlaying = ref(false)
+const streamChunkCount = ref(0)
 
 const audioQueue = createQueue<{ audioBuffer: AudioBuffer, text: string }>({
   handlers: [
@@ -66,6 +70,58 @@ async function testStreaming() {
   }
 }
 
+async function testStreamPlayback() {
+  if (!props.generateSpeechStream || !props.voice || !props.text)
+    return
+
+  isStreamPlaying.value = true
+  streamChunkCount.value = 0
+
+  const manager = createAudioManager()
+  startVolumeTracking(manager, (vol) => {
+    nowSpeaking.value = vol > 0
+  })
+
+  try {
+    const rawStream = await props.generateSpeechStream(props.text, props.voice)
+
+    // Wrap stream to count chunks as they pass through
+    const reader = rawStream.getReader()
+    const countingStream = new ReadableStream<ArrayBuffer>({
+      async start(controller) {
+        try {
+          while (true) {
+            const { done, value } = await reader.read()
+            if (done) {
+              controller.close()
+              return
+            }
+            streamChunkCount.value++
+            controller.enqueue(value)
+          }
+        }
+        catch (err) {
+          controller.error(err)
+        }
+      },
+      cancel() {
+        reader.cancel()
+      },
+    })
+
+    await playAudioStream(manager, countingStream)
+  }
+  catch (error) {
+    console.error('Stream playback failed:', error)
+  }
+  finally {
+    stopVolumeTracking(manager)
+    disposeAudioManager(manager)
+    isStreamPlaying.value = false
+    nowSpeaking.value = false
+  }
+}
+
 async function testChunking() {
   const chunks: TTSInputChunk[] = []
   const stream = new ReadableStream<Uint8Array>({
@@ -87,7 +143,7 @@ async function testChunking() {
   <div class="flex items-center gap-1 text-sm font-medium">
     Streaming Playground
   </div>
-  <div flex="~ row" gap-4>
+  <div flex="~ row wrap" gap-4>
     <button
       border="neutral-800 dark:neutral-200 solid 2" transition="border duration-250 ease-in-out"
       rounded-lg px-4 text="neutral-100 dark:neutral-900" py-2 text-sm
@@ -108,6 +164,20 @@ async function testChunking() {
       <div flex="~ row" items-center gap-2>
         <div i-solar:round-double-alt-arrow-right-bold-duotone />
         <span>Test streaming</span>
+      </div>
+    </button>
+
+    <button
+      v-if="generateSpeechStream"
+      :disabled="isStreamPlaying || !voice || !text"
+      :class="{ 'opacity-50 cursor-not-allowed': isStreamPlaying || !voice || !text }"
+      border="emerald-700 dark:emerald-300 solid 2" transition="border duration-250 ease-in-out"
+      rounded-lg px-4 text="neutral-100 dark:neutral-900" py-2 text-sm
+      bg="emerald-600 dark:emerald-400" @click="testStreamPlayback"
+    >
+      <div flex="~ row" items-center gap-2>
+        <div i-solar:soundwave-bold-duotone />
+        <span>{{ isStreamPlaying ? `Playing (${streamChunkCount} chunks)...` : 'Test stream playback' }}</span>
       </div>
     </button>
   </div>

@@ -14,7 +14,7 @@ import {
 import { onAppBeforeQuit } from '../../../libs/bootkit/lifecycle'
 import { detectGpu } from './gpu-detection'
 import { selectProfile } from './model-profiles'
-import { checkOllama, createOllamaServiceConfig, ensureOllamaModel, getOllamaServiceInfo } from './ollama-service'
+import { checkOllama, createOllamaServiceConfig, ensureOllamaModel, getOllamaServiceInfo, preloadOllamaModel } from './ollama-service'
 import { checkPython, createCosyvoiceService, createFunasrService } from './python-services'
 import { createLocalAIServiceManager } from './service-manager'
 
@@ -53,8 +53,11 @@ export async function setupLocalAIServiceManager() {
   const ollamaStatus = await checkOllama(ollamaInfo.baseUrl)
   if (ollamaStatus.ollamaFound) {
     log.withFields({ version: ollamaStatus.version, models: ollamaStatus.models }).log('Ollama detected')
-    ensureOllamaModel(ollamaInfo.model, ollamaInfo.baseUrl).then((ok) => {
+    ensureOllamaModel(ollamaInfo.model, ollamaInfo.baseUrl).then(async (ok) => {
       if (ok) {
+        // Preload model into GPU memory with keep_alive=-1 to eliminate cold-start latency (~1.1s → ~50ms)
+        await preloadOllamaModel(ollamaInfo.model, ollamaInfo.baseUrl)
+        log.withFields({ model: ollamaInfo.model }).log('Ollama model preloaded into GPU memory')
         manager.start('ollama').catch((err) => {
           log.withError(err).warn('Ollama readiness check failed (non-fatal)')
         })

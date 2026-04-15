@@ -81,6 +81,49 @@ export function stopVolumeTracking(manager: AudioManagerType) {
   manager.onVolumeChange = undefined
 }
 
+/**
+ * Play a stream of WAV audio chunks with minimal gap between them.
+ * Each ArrayBuffer from the stream should be a complete, decodable WAV.
+ * The first chunk starts playing as soon as it's decoded; subsequent chunks
+ * are scheduled to start exactly when the previous one ends (gapless).
+ */
+export async function playAudioStream(
+  manager: AudioManagerType,
+  stream: ReadableStream<ArrayBuffer>,
+): Promise<void> {
+  const reader = stream.getReader()
+  // Track when the last scheduled source ends so we can append seamlessly
+  let nextStartTime = manager.audioContext.currentTime
+  let lastSourceEnded: Promise<void> = Promise.resolve()
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done)
+        break
+
+      const audioBuffer = await manager.audioContext.decodeAudioData(value)
+      const source = manager.audioContext.createBufferSource()
+      source.buffer = audioBuffer
+      source.connect(manager.analyser)
+
+      // Schedule this chunk right after the previous one
+      const startAt = Math.max(nextStartTime, manager.audioContext.currentTime)
+      source.start(startAt)
+      nextStartTime = startAt + audioBuffer.duration
+
+      // Track when this source finishes so we can await all playback
+      lastSourceEnded = new Promise(resolve => source.onended = () => resolve())
+    }
+  }
+  finally {
+    reader.releaseLock()
+  }
+
+  // Wait for the last chunk to finish playing
+  await lastSourceEnded
+}
+
 export function disposeAudioManager(manager: AudioManagerType) {
   stopVolumeTracking(manager)
   manager.audioContext.close()

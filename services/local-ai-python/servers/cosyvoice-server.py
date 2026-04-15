@@ -46,6 +46,18 @@ AVAILABLE_VOICES = list(_list_spks())
 print(f'[cosyvoice-server] Available voices: {AVAILABLE_VOICES}', flush=True)
 
 
+import struct  # noqa: E402
+
+SAMPLE_RATE = 22050
+
+
+def audio_to_wav(audio_np: np.ndarray) -> bytes:
+    """Encode a numpy audio array as WAV bytes."""
+    buf = io.BytesIO()
+    sf.write(buf, audio_np, SAMPLE_RATE, format='WAV')
+    return buf.getvalue()
+
+
 def generate_speech(text: str, voice: str) -> bytes:
     """Generate speech audio from text and return WAV bytes."""
     output = cosyvoice.inference_sft(text, voice)
@@ -61,10 +73,26 @@ def generate_speech(text: str, voice: str) -> bytes:
         raise RuntimeError('No audio generated')
 
     full_audio = np.concatenate(audio_segments)
+    return audio_to_wav(full_audio)
 
-    buf = io.BytesIO()
-    sf.write(buf, full_audio, 22050, format='WAV')
-    return buf.getvalue()
+
+def generate_speech_stream(text: str, voice: str):
+    """Yield length-prefixed WAV chunks as CosyVoice generates them.
+
+    Each yielded bytes object is: [4-byte big-endian length][WAV bytes]
+    Uses CosyVoice's native stream=True mode which yields partial audio
+    incrementally instead of waiting for the full utterance.
+    """
+    output = cosyvoice.inference_sft(text, voice, stream=True)
+
+    for result in output:
+        audio = result['tts_speech']
+        if hasattr(audio, 'numpy'):
+            audio = audio.cpu().numpy()
+        chunk_np = np.array(audio).flatten()
+        wav_bytes = audio_to_wav(chunk_np)
+        # Length-prefixed framing so the client knows chunk boundaries
+        yield struct.pack('>I', len(wav_bytes)) + wav_bytes
 
 
 class CosyVoiceHandler(BaseHTTPRequestHandler):
@@ -109,6 +137,7 @@ class CosyVoiceHandler(BaseHTTPRequestHandler):
 
                 text = body.get('input', '')
                 voice = body.get('voice', AVAILABLE_VOICES[0] if AVAILABLE_VOICES else '')
+                stream = body.get('stream', False)
 
                 if not text:
                     self._send_json(400, {'error': 'input text is required'})
@@ -118,18 +147,12 @@ class CosyVoiceHandler(BaseHTTPRequestHandler):
                     self._send_json(400, {'error': f'voice must be one of: {AVAILABLE_VOICES}'})
                     return
 
-                print(f'[cosyvoice-server] Generating speech: voice={voice}, text="{text[:80]}..."', flush=True)
+                print(f'[cosyvoice-server] Generating speech: voice={voice}, stream={stream}, text="{text[:80]}..."', flush=True)
 
-                wav_bytes = generate_speech(text, voice)
-
-                self.send_response(200)
-                self.send_header('Content-Type', 'audio/wav')
-                self.send_header('Content-Length', str(len(wav_bytes)))
-                self.send_header('Access-Control-Allow-Origin', '*')
-                self.end_headers()
-                self.wfile.write(wav_bytes)
-
-                print(f'[cosyvoice-server] Generated {len(wav_bytes)} bytes of audio', flush=True)
+                if stream:
+                    self._handle_stream(text, voice)
+                else:
+                    self._handle_full(text, voice)
 
             except Exception as e:
                 print(f'[cosyvoice-server] Generation error: {e}', flush=True)
@@ -138,6 +161,41 @@ class CosyVoiceHandler(BaseHTTPRequestHandler):
                 self._send_json(500, {'error': str(e)})
         else:
             self._send_json(404, {'error': 'Not found'})
+
+    def _handle_full(self, text: str, voice: str):
+        """Non-streaming: return complete WAV."""
+        wav_bytes = generate_speech(text, voice)
+
+        self.send_response(200)
+        self.send_header('Content-Type', 'audio/wav')
+        self.send_header('Content-Length', str(len(wav_bytes)))
+        self.send_header('Access-Control-Allow-Origin', '*')
+        self.end_headers()
+        self.wfile.write(wav_bytes)
+
+        print(f'[cosyvoice-server] Generated {len(wav_bytes)} bytes of audio', flush=True)
+
+    def _handle_stream(self, text: str, voice: str):
+        """Streaming: send length-prefixed WAV chunks as they are generated.
+
+        Each frame is [4 bytes big-endian length][WAV bytes]. The response has
+        no Content-Length so the client reads until EOF (connection close).
+        """
+        self.send_response(200)
+        self.send_header('Content-Type', 'application/octet-stream')
+        self.send_header('Access-Control-Allow-Origin', '*')
+        self.end_headers()
+
+        total_bytes = 0
+        chunk_count = 0
+        for frame in generate_speech_stream(text, voice):
+            self.wfile.write(frame)
+            self.wfile.flush()
+            total_bytes += len(frame)
+            chunk_count += 1
+            print(f'[cosyvoice-server] Streamed chunk {chunk_count}: {len(frame)} bytes', flush=True)
+
+        print(f'[cosyvoice-server] Stream complete: {chunk_count} chunks, {total_bytes} bytes total', flush=True)
 
 
 def main():

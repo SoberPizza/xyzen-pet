@@ -16,6 +16,7 @@ const props = defineProps<{
 
   // Provider-specific handlers (provided from parent)
   generateSpeech: (input: string, voice: string, useSSML: boolean) => Promise<ArrayBuffer>
+  generateSpeechStream?: (input: string, voice: string) => Promise<ReadableStream<ArrayBuffer>>
 
   // Current state
   apiKeyConfigured?: boolean
@@ -200,6 +201,7 @@ defineExpose({
         :text="testText"
         :voice="selectedVoice"
         :generate-speech="generateSpeech"
+        :generate-speech-stream="generateSpeechStream"
       />
     </div>
     <!-- Slot for additional provider-specific UI in the playground -->

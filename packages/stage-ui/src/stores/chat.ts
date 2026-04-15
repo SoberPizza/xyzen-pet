@@ -399,7 +399,19 @@ export const useChatOrchestratorStore = defineStore('chat-orchestrator', () => {
               })
 
               break
+            case 'reasoning-delta':
+              // Model is thinking — mark the streaming message so the UI can show a thinking indicator.
+              // Content from reasoning-delta is intentionally not appended to the chat output.
+              if (!buildingMessage.isThinking) {
+                buildingMessage.isThinking = true
+                updateUI()
+              }
+              break
             case 'text-delta':
+              // First content token after thinking phase — clear the thinking indicator
+              if (buildingMessage.isThinking) {
+                buildingMessage.isThinking = false
+              }
               fullText += event.text
               await parser.consume(event.text)
               break

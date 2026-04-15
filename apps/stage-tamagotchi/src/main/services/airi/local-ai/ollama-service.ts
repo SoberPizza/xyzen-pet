@@ -70,6 +70,28 @@ export function getOllamaServiceInfo(profile: ModelProfile, baseUrl = DEFAULT_BA
   }
 }
 
+/**
+ * Preload a model into GPU memory and set keep_alive to -1 (never unload).
+ * This eliminates the ~1.1s cold-start load time on each request.
+ */
+export async function preloadOllamaModel(model: string, baseUrl = DEFAULT_BASE_URL): Promise<boolean> {
+  try {
+    const res = await fetch(`${baseUrl}/api/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model,
+        messages: [],
+        keep_alive: -1,
+      }),
+    })
+    return res.ok
+  }
+  catch {
+    return false
+  }
+}
+
 /** Create an Ollama service config compatible with LocalAIServiceConfig for status tracking. */
 export function createOllamaServiceConfig(config: LocalAIOllamaConfig) {
   const baseUrl = config.baseUrl || DEFAULT_BASE_URL
