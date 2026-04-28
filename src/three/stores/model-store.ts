@@ -1,3 +1,19 @@
+/**
+ * Pinia store for the VRM stage scene — runtime + persisted state.
+ *
+ * Holds every value the scene bootstrap needs: model bounds / origin /
+ * eye height (computed at load time), user-adjustable offset + rotation
+ * (edit mode drags these), camera framing (FOV / distance / look-at),
+ * and environment/lighting settings. Most fields are backed by
+ * `useLocalStorage` so layout and scene prefs survive reloads.
+ *
+ * Also owns a small state machine (`scenePhase` +
+ * `sceneTransactionDepth` → `sceneMutationLocked`) that `VRMModel.vue`
+ * uses to debounce scene writes while a model is loading/binding, plus
+ * a `shouldUpdateView()` fan-out so external code (edit-mode drag,
+ * window resize) can request a re-render without re-running reactivity.
+ */
+
 import { useLocalStorage } from '@vueuse/core'
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'

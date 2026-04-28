@@ -1,4 +1,13 @@
 <script setup lang="ts">
+/*
+ * SettingsPreviewPopover — dev-only quick-test strip for VRM behaviors.
+ *
+ * Mounted in App.vue when running outside Tauri (browser dev at :5174).
+ * Emits `emotion`, `viseme`, `blink`, and `look-at` events that App.vue
+ * forwards to `ThreeScene`'s imperative methods — lets a developer
+ * poke the avatar without running the full voice pipeline.
+ */
+
 import { Emotion, EMOTION_VRMExpressionName_value } from '../stores/constants/emotions'
 import { ref } from 'vue'
 

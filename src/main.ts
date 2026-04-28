@@ -1,3 +1,12 @@
+/**
+ * App bootstrap.
+ *
+ * Fires the Xyzen backend init in the background (non-blocking — we mount
+ * the Vue app even when the backend is unreachable so the avatar still
+ * renders), then installs Pinia + TresJS and mounts `App.vue` into
+ * `#buddy-app`.
+ */
+
 import Tres from '@tresjs/core'
 import { createPinia } from 'pinia'
 import { createApp } from 'vue'

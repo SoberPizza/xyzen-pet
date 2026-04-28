@@ -1,4 +1,13 @@
 <script setup lang="ts">
+/*
+ * VisionModule — settings panel for camera permission and device selection.
+ *
+ * Queries `navigator.permissions`, enumerates video inputs via
+ * `mediaDevices.enumerateDevices()`, and persists the chosen camera to
+ * localStorage so downstream vision features can read the same selection.
+ * Mounted inside `SettingsDialog`'s "Vision" section.
+ */
+
 import { useLocalStorage } from '@vueuse/core'
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 

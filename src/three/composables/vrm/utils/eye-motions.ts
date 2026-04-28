@@ -1,3 +1,12 @@
+/**
+ * Random saccade-interval generator for idle eye motion.
+ *
+ * Returns a jittered time (ms) until the next saccade, sampled from a
+ * cumulative probability table tuned to look natural (short glances are
+ * common, long fixations are rare). Used by `useIdleEyeSaccades()` to
+ * schedule when to jitter the VRM's look-at target.
+ */
+
 const EYE_SACCADE_INT_STEP = 400
 const EYE_SACCADE_INT_P = [
   [0.075, 800],

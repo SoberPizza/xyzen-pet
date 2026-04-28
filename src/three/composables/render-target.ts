@@ -1,3 +1,14 @@
+/**
+ * Offscreen readback helper for the TresJS canvas.
+ *
+ * Lets callers render the current scene into a matching-size
+ * `WebGLRenderTarget` and read a pixel region around a client-space
+ * point — used by features that need to inspect the rendered image
+ * (e.g. sampling colors under the cursor) without interfering with
+ * the main render pipeline. Recreates the target on drawing-buffer
+ * resize so DPI / canvas size changes don't read stale pixels.
+ */
+
 import type { Camera, Scene, WebGLRenderer } from 'three'
 
 import { clamp } from 'es-toolkit/math'

@@ -1,4 +1,13 @@
 <script setup lang="ts">
+/*
+ * SettingsStandalone — entrypoint for the dedicated Tauri settings window.
+ *
+ * Rendered when `window.location.hash` is `#/settings`. Wraps
+ * `SettingsDialog` and translates its `update:modelValue(false)` into a
+ * `close_buddy_settings_window` Tauri IPC call so closing the dialog
+ * closes the OS window.
+ */
+
 import { ref } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 

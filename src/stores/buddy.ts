@@ -1,3 +1,15 @@
+/**
+ * Pinia store for the user's buddies — roster + active selection.
+ *
+ * Loads buddies from the backend via the `/buddies` REST endpoints,
+ * mirrors them into an IndexedDB cache (`buddy-cache`) so reloads can
+ * show the roster while the network fetch races, and exposes
+ * `activeBuddy` / `activeBuddyId` for the rest of the app (VRM stage,
+ * CEO-chat wake-word config). `initialize({ force })` is the single
+ * entrypoint — App.vue calls it on mount; SettingsDialog retries it on
+ * user demand.
+ */
+
 import type {
   BuddyCreate,
   BuddyGender,

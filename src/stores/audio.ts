@@ -1,3 +1,13 @@
+/**
+ * Pinia store owning the app's shared `AudioContext`.
+ *
+ * Every part of the voice pipeline (mic capture, VAD, TTS playback,
+ * lip-sync) attaches to this single context so their AudioNodes are
+ * graph-compatible. Also exposes helpers that turn an `AnalyserNode`
+ * frequency read into a normalized volume scalar — used for mic-level
+ * meters and audio-driven animation hooks.
+ */
+
 import { defineStore } from 'pinia'
 import { shallowRef } from 'vue'
 

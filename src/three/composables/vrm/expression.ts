@@ -1,3 +1,20 @@
+/**
+ * VRM emotion / expression blending.
+ *
+ * `useVRMEmote(vrm)` exposes `setEmotion(name, intensity)` and
+ * `setEmotionWithResetAfter(name, ms, intensity)` that drive the
+ * model's `expressionManager` weights. Each emotion is a small list of
+ * (presetName, targetValue) pairs with an ease-in-out-cubic blend over
+ * `blendDuration`; `update(deltaTime)` runs the lerp per frame.
+ *
+ * Values are intentionally kept below 1.0 for the primary emotions to
+ * avoid the "smiling too hard" look reported in upstream issue #590 —
+ * the actual applied weight is `value × intensity`. Before blending we
+ * snapshot the current expression values so transitions start from
+ * what's on-screen, not from zero (fixes the visible snap-to-zero
+ * artifact also from #590).
+ */
+
 import type { VRMCore } from '@pixiv/three-vrm-core'
 
 import { ref } from 'vue'

@@ -1,3 +1,14 @@
+/**
+ * Wake-word (nickname) validation helpers.
+ *
+ * A buddy's name + nicknames double as voice wake terms in
+ * `standby_wake` mode. CJK terms use tighter length bounds (2–8 chars)
+ * than Latin ones (4–16) because each CJK character carries more
+ * phonetic weight — an STT-friendly lower bound is shorter.
+ * Consumers: `BuddyDetailsDialog` (on-input feedback),
+ * `useBuddyVoiceSession` (collecting the wake list sent to the server).
+ */
+
 export type WakeTermValidation
   = | { ok: true, value: string }
     | { ok: false, reason: 'empty' | 'too-short' | 'too-long' }

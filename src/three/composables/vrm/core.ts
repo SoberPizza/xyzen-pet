@@ -1,3 +1,14 @@
+/**
+ * Core VRM loading + scene-framing math.
+ *
+ * `loadVrm()` parses a `.vrm` via the shared GLTFLoader, runs
+ * `VRMUtils.removeUnnecessaryVertices` / `combineSkeletons` for perf,
+ * aligns `faceFront` onto −Z, and computes the model's bounding box +
+ * the camera distance / pivot framing used by `VRMModel.vue`. Per-model
+ * overrides (`VrmDisplayConfig`) come in via `display-models.ts` so the
+ * same framing runs on fresh loads and vrm-instance-cache hits.
+ */
+
 import type { VRM, VRMCore } from '@pixiv/three-vrm'
 import type { Mesh, Object3D, Scene } from 'three'
 

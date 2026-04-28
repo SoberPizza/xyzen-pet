@@ -1,3 +1,15 @@
+/**
+ * View-space outline patch for MToon materials.
+ *
+ * Implements a custom cel-outline pass by (1) precomputing a
+ * welded-average `outlineNormal` buffer attribute per geometry and
+ * (2) injecting shader patches into MToon's outline pass so the
+ * offset is applied in view space with an anti-z-fight bias. Installed
+ * as a `VrmHook` via `internal-hooks.ts` — runs on every mounted VRM
+ * once per material. Still tuning (see `AIRI_OUTLINE_VIEW_*` constants);
+ * kept local until the hybrid screen/geometry outline strategy lands.
+ */
+
 import type { MToonMaterial, VRM } from '@pixiv/three-vrm'
 import type { BufferGeometry, InterleavedBufferAttribute, Material } from 'three'
 

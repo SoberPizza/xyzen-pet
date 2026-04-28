@@ -1,4 +1,11 @@
 <script setup lang="ts">
+/*
+ * GeneralModule — settings panel for app-wide "General" preferences.
+ *
+ * Renders brightness slider and language picker bound to `useGeneralStore`.
+ * Mounted inside `SettingsDialog`'s "General" section.
+ */
+
 import { storeToRefs } from 'pinia'
 import { computed } from 'vue'
 

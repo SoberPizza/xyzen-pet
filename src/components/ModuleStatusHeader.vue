@@ -1,4 +1,12 @@
 <script setup lang="ts">
+/*
+ * ModuleStatusHeader — shared header for settings module panels.
+ *
+ * Renders the module's name, an Available/Unavailable dot, and slots
+ * for a leading icon and a trailing action button. Used by
+ * GeneralModule, VisionModule, and other per-capability settings panes.
+ */
+
 const props = defineProps<{
   moduleName: string
   configured: boolean

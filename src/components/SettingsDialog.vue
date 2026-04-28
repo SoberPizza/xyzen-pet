@@ -1,4 +1,19 @@
 <script setup lang="ts">
+/*
+ * SettingsDialog — the buddy settings surface.
+ *
+ * Two mount paths share this component:
+ *  - Tauri: rendered full-window inside `SettingsStandalone.vue`, which
+ *    lives at `#/settings` and is opened via the `open_buddy_settings_window`
+ *    IPC command.
+ *  - Browser dev: rendered as an in-app modal from `App.vue` when the
+ *    settings FAB is clicked (no dedicated window available).
+ *
+ * Section layout: Buddies (list + details editor), General, Vision, Voice
+ * (wake-word / playback), Connection (auth debug). Each tab is a small
+ * module so panels can be added without churning this file.
+ */
+
 import { useBuddyStore } from '../stores/buddy'
 import { useHearingStore } from '../stores/hearing'
 import { storeToRefs } from 'pinia'

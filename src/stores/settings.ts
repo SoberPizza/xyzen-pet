@@ -1,3 +1,13 @@
+/**
+ * Pinia store that binds the active buddy to a bundled VRM stage model.
+ *
+ * Watches `buddyStore.activeBuddy`'s (raceCode, stage); when either
+ * changes it looks up the matching entry in `useDisplayModelsStore` and
+ * applies it to the stage (`stageModelRenderer`, `stageModelSelectedUrl`,
+ * `activeAnimationDriver`). ThreeScene + the gesture driver in App.vue
+ * subscribe to this store to swap the VRM without re-mounting the canvas.
+ */
+
 import { defineStore } from 'pinia'
 import { computed, ref, watch } from 'vue'
 

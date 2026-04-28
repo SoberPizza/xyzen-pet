@@ -1,3 +1,18 @@
+/**
+ * VRM animation helpers.
+ *
+ *  - `loadVRMAnimation()` / `clipFromVRMAnimation()` — read a `.vrma`
+ *    file and turn it into a `THREE.AnimationClip` retargeted to the
+ *    supplied VRM.
+ *  - `reAnchorRootPositionTrack()` — rebase an animation's hips track so
+ *    the clip's root position matches the model's rest hips, avoiding
+ *    a visible pop when the first frame plays.
+ *  - `useBlink()` — procedural eye-blink composable driving the `blink`
+ *    expression on a jittered schedule.
+ *  - `useIdleEyeSaccades()` — idle look-at jitter using the saccade
+ *    interval distribution in `utils/eye-motions.ts`.
+ */
+
 import type { VRMAnimation } from '@pixiv/three-vrm-animation'
 import type { VRMCore } from '@pixiv/three-vrm-core'
 import type { AnimationClip } from 'three'

@@ -1,3 +1,14 @@
+/**
+ * Registry of bundled VRM models, keyed by (raceCode, stage).
+ *
+ * Each entry pairs a VRM asset URL with its per-model `animationDriver`
+ * (gesture overrides) and optional `displayConfig` (camera framing).
+ * `useSettingsStageModel` looks up the active buddy's race × stage here
+ * to decide which VRM to mount on the stage. There is no user-upload
+ * path — the dev team owns every shipped model, so adding a new one
+ * means a new entry + assets in this file.
+ */
+
 import { defineStore } from 'pinia'
 
 import type { BuddyStage } from '../services/xyzen/buddies'

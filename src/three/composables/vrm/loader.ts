@@ -1,3 +1,13 @@
+/**
+ * Shared `GLTFLoader` singleton for VRM assets.
+ *
+ * Registers the three-vrm + three-vrm-animation plugins once so every
+ * `.vrm` / `.vrma` load in the app goes through the same loader, and
+ * wraps the stock MToon plugin with `AiriMToonMaterialLoaderPlugin` so
+ * models without author-authored outlines can opt into a computed
+ * fallback (off by default via `AIRI_ALL_OUTLINE`).
+ */
+
 import {
   MToonMaterialLoaderPlugin,
   MToonMaterialOutlineWidthMode,

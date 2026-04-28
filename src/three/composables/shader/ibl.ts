@@ -1,3 +1,13 @@
+/**
+ * Image-based-lighting (IBL) shader injection for MToon / NPR materials.
+ *
+ * Adds a 3rd-order spherical-harmonics irradiance term to the fragment
+ * shader (via `onBeforeCompile` chunk patching), exposes
+ * `updateNprShaderSetting()` to flip it on/off at runtime, and wraps a
+ * matching `THREE.LightProbe` so the stock MToon path lights up the
+ * same way. Ported from airi's `stage-ui/composables/shader/ibl.ts`.
+ */
+
 // stage-ui/composables/shader/ibl.ts
 import * as THREE from 'three'
 

@@ -1,4 +1,14 @@
 <script setup lang="ts">
+/*
+ * BuddyDetailsDialog — per-buddy edit / activate modal.
+ *
+ * Used from SettingsDialog's "Buddies" section: shows the buddy's
+ * identity/traits/wake terms and lets the user rename, edit nickname
+ * wake terms, or activate this buddy as the stage avatar. Calls into
+ * `useBuddyStore` for persistence and `useSettingsStageModel` to swap
+ * the VRM when activation changes.
+ */
+
 import type { Buddy } from '../stores/buddy';
 import type { BuddyGender, BuddyStage } from '../services/xyzen/buddies';
 

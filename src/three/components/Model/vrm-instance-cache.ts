@@ -1,3 +1,15 @@
+/**
+ * Per-HMR-scope cache for already-loaded VRM instances.
+ *
+ * Loading a VRM is expensive (glTF parse + VRMUtils optimizations +
+ * material patches), so when Vite hot-reloads `VRMModel.vue` we stash
+ * the live instance on `import.meta.hot.data` and take it back on the
+ * next mount. Also used for runtime model swaps so that switching
+ * away-then-back to the same URL reuses the detached group instead of
+ * reloading. See CLAUDE.md for the known leak note: long sessions with
+ * many distinct models accumulate GPU memory here until cleared.
+ */
+
 import type { VRM } from '@pixiv/three-vrm'
 import type { AnimationMixer, Group } from 'three'
 

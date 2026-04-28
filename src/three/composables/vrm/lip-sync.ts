@@ -1,3 +1,15 @@
+/**
+ * Real-time viseme lip-sync driven by the assistant's audio graph.
+ *
+ * Creates a `wlipsync` `AudioWorkletNode` on the shared AudioContext,
+ * wires the current audio source (usually the TTS-streaming worklet
+ * from `audio-decoder.ts`) into it, and maps the node's raw
+ * A/E/I/O/U/S weights onto the VRM's `aa/ee/ih/oh/ou` blendshapes
+ * each frame. Includes attack/release smoothing, silence gating, and
+ * a winner+runner-up strategy to avoid over-activating multiple
+ * vowels at once.
+ */
+
 import type { VRMCore } from '@pixiv/three-vrm-core'
 import type { Ref } from 'vue'
 import type { Profile } from 'wlipsync'
