@@ -1,0 +1,48 @@
+{
+  "name": "@xyzen/buddy",
+  "type": "module",
+  "private": true,
+  "description": "VRM buddy renderer for Xyzen - stripped from pet/airi",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "lint": "eslint src/ tests/",
+    "lint:fix": "eslint src/ tests/ --fix",
+    "knip": "knip --no-config-hints",
+    "knip:fix": "knip --fix --no-config-hints",
+    "typecheck": "vue-tsc --noEmit",
+    "test": "vitest run"
+  },
+  "//": "`pnpm dev` is the Vite server the Tauri desktop shell loads from in debug builds; Buddy itself is never opened as a standalone browser tab — see buddy/CLAUDE.md.",
+  "dependencies": {
+    "@pixiv/three-vrm": "^3.5.1",
+    "@pixiv/three-vrm-animation": "^3.5.1",
+    "@pixiv/three-vrm-core": "^3.5.1",
+    "@ricky0123/vad-web": "^0.0.28",
+    "@tauri-apps/api": "^2",
+    "@tresjs/core": "^5.8.0",
+    "@vueuse/core": "^14.2.1",
+    "es-toolkit": "^1.43.0",
+    "localforage": "^1.10.0",
+    "pinia": "^3.0.4",
+    "three": "^0.183.2",
+    "vue": "^3.5.32",
+    "wlipsync": "^1.3.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/audioworklet": "^0.0.97",
+    "@types/three": "^0.183.1",
+    "@vitejs/plugin-vue": "^6.0.5",
+    "eslint": "^10.2.1",
+    "eslint-plugin-vue": "^10.8.0",
+    "jsdom": "^26.1.0",
+    "knip": "^6.4.1",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.58.2",
+    "vite": "^8.0.8",
+    "vitest": "^3.2.3",
+    "vue-eslint-parser": "^10.4.0",
+    "vue-tsc": "^3.2.6"
+  }
+}
