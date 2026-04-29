@@ -11,9 +11,16 @@
     "knip": "knip --no-config-hints",
     "knip:fix": "knip --fix --no-config-hints",
     "typecheck": "vue-tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "prepare": "simple-git-hooks"
   },
   "//": "`pnpm dev` is the Vite server the Tauri desktop shell loads from in debug builds; Buddy itself is never opened as a standalone browser tab — see buddy/CLAUDE.md.",
+  "simple-git-hooks": {
+    "pre-commit": "yarn lint-staged"
+  },
+  "lint-staged": {
+    "{src,tests}/**/*.{ts,vue,js}": "eslint --fix"
+  },
   "dependencies": {
     "@pixiv/three-vrm": "^3.5.1",
     "@pixiv/three-vrm-animation": "^3.5.1",
@@ -38,6 +45,8 @@
     "eslint-plugin-vue": "^10.8.0",
     "jsdom": "^26.1.0",
     "knip": "^6.4.1",
+    "lint-staged": "^16.4.0",
+    "simple-git-hooks": "^2.13.1",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.58.2",
     "vite": "^8.0.8",
