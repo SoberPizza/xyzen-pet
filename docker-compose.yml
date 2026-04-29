@@ -1,0 +1,79 @@
+# Raspberry Pi 5 (Pi OS Bookworm Lite) dev/build pipeline for @xyzen/buddy.
+#
+# `build`   — one-shot: cargo tauri build inside an aarch64 toolchain image,
+#             writes the .deb into src-tauri/target/release/bundle/deb/ on the
+#             host. Runs natively on Apple Silicon.
+# `shell`   — interactive shell in the same image for ad-hoc cargo work.
+# `runtime` — slim arm64 image for the Pi itself. Attaches to the host's
+#             Wayland + Pulse sockets. Profile-gated so `docker compose up`
+#             on the Mac doesn't launch it.
+
+x-builder-common: &builder-common
+  build:
+    context: ./docker
+    dockerfile: builder.Dockerfile
+    platforms:
+      - linux/arm64
+  image: buddy-builder:latest
+  platform: linux/arm64
+  working_dir: /workspace
+  volumes:
+    - ./:/workspace
+    # Named volumes for arch-specific caches. The host's src-tauri/target/
+    # and node_modules/ are macOS artifacts; mounting them into an arm64
+    # Linux container would clobber each side on every run.
+    - buddy-cargo-registry:/usr/local/cargo/registry
+    - buddy-cargo-git:/usr/local/cargo/git
+    - buddy-cargo-target:/workspace/src-tauri/target
+    - buddy-node-modules:/workspace/node_modules
+
+services:
+  build:
+    <<: *builder-common
+    # Default CMD from the Dockerfile runs `yarn install` + `cargo tauri
+    # build --no-default-features --features ort-dynamic`. Override on the
+    # CLI if you only want the frontend: `docker compose run --rm build
+    # yarn build`.
+
+  shell:
+    <<: *builder-common
+    stdin_open: true
+    tty: true
+    entrypoint: ["/bin/bash"]
+    command: []
+
+  runtime:
+    profiles: ["runtime"]
+    build:
+      context: ./docker
+      dockerfile: runtime.Dockerfile
+      platforms:
+        - linux/arm64
+      args:
+        BUDDY_BINARY: artifacts/buddy
+        SILERO_ONNX: artifacts/silero_vad_v5.onnx
+    image: buddy-runtime:latest
+    platform: linux/arm64
+    # host networking so the binary can reach whatever Xyzen base URL the
+    # Casdoor JWT provider (runtime/config.ts) resolves to.
+    network_mode: host
+    environment:
+      WAYLAND_DISPLAY: wayland-0
+      XDG_RUNTIME_DIR: /run/user/1000
+      # Uncomment if the Pi is on Xorg rather than Wayland.
+      # DISPLAY: ":0"
+    volumes:
+      - /run/user/1000/wayland-0:/run/user/1000/wayland-0
+      - /run/user/1000/pulse:/run/user/1000/pulse
+      - /tmp/.X11-unix:/tmp/.X11-unix
+    devices:
+      - /dev/snd:/dev/snd
+    group_add:
+      - "audio"
+      - "video"
+
+volumes:
+  buddy-cargo-registry:
+  buddy-cargo-git:
+  buddy-cargo-target:
+  buddy-node-modules:

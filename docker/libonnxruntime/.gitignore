@@ -1,0 +1,5 @@
+*.so
+*.so.*
+*.tgz
+*.tar.gz
+onnxruntime-linux-*/

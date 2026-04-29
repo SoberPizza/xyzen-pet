@@ -33,6 +33,22 @@ Pre-commit runs `eslint --fix` on staged `src/`/`tests/` files via
 `simple-git-hooks` + `lint-staged` (installed by `yarn prepare`). CI is
 `.github/workflows/ci.yml`.
 
+### Raspberry Pi 5 builds
+
+aarch64 Tauri builds live under `docker/`. First-time setup:
+
+```bash
+bash docker/libonnxruntime/fetch.sh   # pin libonnxruntime for ort/load-dynamic
+docker compose run --rm build         # → src-tauri/target/release/bundle/deb/*.deb
+```
+
+The builder image is `linux/arm64` and runs natively on Apple Silicon.
+Pi-side deployment uses the `runtime` profile (`docker compose --profile
+runtime ...`); see `docker/README.md`. The Pi build must pass
+`--no-default-features --features ort-dynamic` (default in the compose
+CMD) so `ort` dlopens the bundled `libonnxruntime.so` instead of trying
+to download a desktop binary.
+
 ## Stack
 
 - **Vue 3** (Composition API, `<script setup>`) + **Pinia** for state.

@@ -1,0 +1,13 @@
+.git
+.github
+node_modules
+dist
+src-tauri/target
+**/.DS_Store
+**/*.log
+.vscode
+.idea
+coverage
+tests/__snapshots__
+yarn-error.log
+npm-debug.log
