@@ -58,3 +58,7 @@ Thumbs.db
 
 # Claude Code local overrides (keep repo-shared settings, if any)
 .claude/settings.local.json
+
+# Tauri
+src-tauri/target/
+src-tauri/gen/schemas/

@@ -9,21 +9,21 @@
  * the VRM when activation changes.
  */
 
-import type { Buddy } from '../stores/buddy';
-import type { BuddyGender, BuddyStage } from '../services/xyzen/buddies';
+import type { Buddy } from '../../stores/buddy';
+import type { BuddyGender, BuddyStage } from '../../services/xyzen/buddies';
 
 import { storeToRefs } from 'pinia';
 import { computed, reactive, ref, watch } from 'vue';
 
-import { tBuddy } from '../locales';
-import { initXyzen } from '../services/xyzen';
-import { useBuddyStore } from '../stores/buddy';
-import { useSettingsStageModel } from '../stores/settings';
+import { tBuddy } from '../../locales';
+import { initXyzen } from '../../services/xyzen';
+import { useBuddyStore } from '../../stores/buddy';
+import { useSettingsStageModel } from '../../stores/settings';
 import {
   validateWakeTerm,
   wakeTermLength,
   wakeTermLimits,
-} from '../utils/wake-word';
+} from '../../utils/wake-word';
 
 const props = defineProps<{
   modelValue: boolean;

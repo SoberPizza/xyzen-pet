@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /*
- * GeneralModule — settings panel for app-wide "General" preferences.
+ * GeneralPanel — settings panel for app-wide "General" preferences.
  *
  * Renders brightness slider and language picker bound to `useGeneralStore`.
  * Mounted inside `SettingsDialog`'s "General" section.
@@ -10,7 +10,7 @@ import { storeToRefs } from 'pinia'
 import { computed } from 'vue'
 
 import { useGeneralStore } from '../../stores/general'
-import ModuleStatusHeader from './ModuleStatusHeader.vue'
+import ModuleStatusHeader from '../ModuleStatusHeader.vue'
 
 const generalStore = useGeneralStore()
 const { configured, brightness, language } = storeToRefs(generalStore)

@@ -4,7 +4,7 @@
  *
  * Renders the module's name, an Available/Unavailable dot, and slots
  * for a leading icon and a trailing action button. Used by
- * GeneralModule, VisionModule, and other per-capability settings panes.
+ * GeneralPanel, VisionPanel, and other per-capability settings panes.
  */
 
 const props = defineProps<{

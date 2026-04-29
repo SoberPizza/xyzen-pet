@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /*
- * VisionModule — settings panel for camera permission and device selection.
+ * VisionPanel — settings panel for camera permission and device selection.
  *
  * Queries `navigator.permissions`, enumerates video inputs via
  * `mediaDevices.enumerateDevices()`, and persists the chosen camera to
@@ -11,7 +11,7 @@
 import { useLocalStorage } from '@vueuse/core'
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 
-import ModuleStatusHeader from './ModuleStatusHeader.vue'
+import ModuleStatusHeader from '../ModuleStatusHeader.vue'
 
 const refreshingDevices = ref(false)
 

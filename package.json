@@ -12,6 +12,7 @@
     "knip:fix": "knip --fix --no-config-hints",
     "typecheck": "vue-tsc --noEmit",
     "test": "vitest run",
+    "tauri": "tauri",
     "prepare": "simple-git-hooks"
   },
   "//": "`pnpm dev` is the Vite server the Tauri desktop shell loads from in debug builds; Buddy itself is never opened as a standalone browser tab — see buddy/CLAUDE.md.",
@@ -38,6 +39,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@tauri-apps/cli": "^2",
     "@types/audioworklet": "^0.0.97",
     "@types/three": "^0.183.1",
     "@vitejs/plugin-vue": "^6.0.5",
