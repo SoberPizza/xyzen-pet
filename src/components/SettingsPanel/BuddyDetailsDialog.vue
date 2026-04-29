@@ -10,13 +10,13 @@
  */
 
 import type { Buddy } from '../../stores/buddy';
-import type { BuddyGender, BuddyStage } from '../../services/xyzen/buddies';
+import type { BuddyGender, BuddyStage } from '../../services/buddies';
 
 import { storeToRefs } from 'pinia';
 import { computed, reactive, ref, watch } from 'vue';
 
 import { tBuddy } from '../../locales';
-import { initXyzen } from '../../services/xyzen';
+import { initXyzen } from '../../services';
 import { useBuddyStore } from '../../stores/buddy';
 import { useSettingsStageModel } from '../../stores/settings';
 import {

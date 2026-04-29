@@ -12,7 +12,7 @@ import { createPinia } from 'pinia'
 import { createApp } from 'vue'
 
 import App from './App.vue'
-import { initXyzen } from './services/xyzen'
+import { initXyzen } from './services'
 
 const pinia = createPinia()
 

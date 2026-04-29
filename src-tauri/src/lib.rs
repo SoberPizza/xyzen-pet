@@ -1,20 +1,24 @@
-use serde::Serialize;
 use tauri::{
     LogicalPosition, LogicalSize, Manager, PhysicalPosition, PhysicalSize,
     WebviewUrl, WebviewWindowBuilder,
 };
+use tracing_subscriber::EnvFilter;
+
+mod auth;
+mod error;
+mod events;
+mod ipc;
+mod net;
+mod state;
+mod vad;
+
+use state::AppState;
 
 const MIN_W: f64 = 180.0;
 const MIN_H: f64 = 240.0;
 const MAX_W: f64 = 640.0;
 const MAX_H: f64 = 900.0;
 const MARGIN: f64 = 16.0;
-
-#[derive(Serialize, Default)]
-struct AuthCredentials {
-    token: Option<String>,
-    base_url: Option<String>,
-}
 
 fn clamp(w: f64, h: f64) -> (f64, f64) {
     (w.clamp(MIN_W, MAX_W), h.clamp(MIN_H, MAX_H))
@@ -82,14 +86,23 @@ async fn close_buddy_settings_window(app: tauri::AppHandle) -> Result<(), String
     Ok(())
 }
 
-#[tauri::command]
-async fn get_auth_credentials() -> Result<AuthCredentials, String> {
-    Ok(AuthCredentials::default())
+fn init_tracing() {
+    // Respect RUST_LOG if set; otherwise give each Rust-side module its own
+    // bucket so noisy subsystems can be quieted without touching the rest.
+    let filter = EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| EnvFilter::new("buddy_lib=info,reqwest=warn,tokio_tungstenite=warn"));
+    let _ = tracing_subscriber::fmt()
+        .with_env_filter(filter)
+        .with_target(true)
+        .try_init();
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    init_tracing();
+
     tauri::Builder::default()
+        .manage(AppState::new())
         .setup(|app| {
             if let Some(win) = app.get_webview_window("main") {
                 if let Ok(Some(monitor)) = win.current_monitor() {
@@ -116,7 +129,23 @@ pub fn run() {
             resize_buddy_window,
             open_buddy_settings_window,
             close_buddy_settings_window,
-            get_auth_credentials,
+            ipc::auth_cmd::get_auth_credentials,
+            ipc::auth_cmd::set_auth_credentials,
+            ipc::http_cmd::xyzen_http_request,
+            ipc::sse_cmd::xyzen_sse_connect,
+            ipc::sse_cmd::xyzen_sse_disconnect,
+            ipc::sse_cmd::xyzen_sse_status,
+            ipc::voice_cmd::xyzen_voice_ws_open,
+            ipc::voice_cmd::xyzen_voice_ws_close,
+            ipc::voice_cmd::xyzen_voice_ws_start_session,
+            ipc::voice_cmd::xyzen_voice_ws_input_start,
+            ipc::voice_cmd::xyzen_voice_ws_input_commit,
+            ipc::voice_cmd::xyzen_voice_ws_interrupt,
+            ipc::voice_cmd::xyzen_voice_ws_stop_session,
+            ipc::voice_cmd::xyzen_voice_ws_send_frame,
+            ipc::vad_cmd::vad_start,
+            ipc::vad_cmd::vad_stop,
+            ipc::vad_cmd::vad_push_frame,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

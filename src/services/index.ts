@@ -10,11 +10,11 @@
  *   3. Kick off the SSE connect — it self-heals via exponential backoff.
  */
 
-import type { ResolvedConfig } from '../../runtime/config'
+import type { ResolvedConfig } from '../runtime/config'
 import type { BuddiesClient } from './buddies'
 import type { HttpClient } from './http'
 
-import { resolveConfig } from '../../runtime/config'
+import { resolveConfig } from '../runtime/config'
 import { createBuddiesClient } from './buddies'
 import { xyzenBus } from './event-bus'
 import { createHttpClient } from './http'

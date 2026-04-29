@@ -21,16 +21,16 @@
 import { defineStore } from 'pinia'
 import { ref, watch } from 'vue'
 
-import { initXyzen } from '../services/xyzen'
+import { initXyzen } from '../services'
 import {
   fetchRootAgentId,
   getOrCreateRecentTopic,
   resolveAgentSession,
   sendCeoMessage,
-} from '../services/xyzen/ceo-chat'
-import { xyzenBus } from '../services/xyzen/event-bus'
-import { HttpError } from '../services/xyzen/http'
-import { XyzenReplyEnd } from '../services/xyzen/types'
+} from '../services/ceo-chat'
+import { xyzenBus } from '../services/event-bus'
+import { HttpError } from '../services/http'
+import { XyzenReplyEnd } from '../services/types'
 import { resolveTraitPrompts } from './constants/trait-prompts'
 import { useBuddyStateStore } from './buddy-state'
 import { useBuddyStore } from './buddy'

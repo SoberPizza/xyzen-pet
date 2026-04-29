@@ -32,8 +32,8 @@
 
 import { onBeforeUnmount } from 'vue'
 
-import { xyzenBus } from '../../../services/xyzen/event-bus'
-import { XyzenGestureTrigger } from '../../../services/xyzen/types'
+import { xyzenBus } from '../../../services/event-bus'
+import { XyzenGestureTrigger } from '../../../services/types'
 
 export interface GestureTarget {
   /** Named emotion preset from `useVRMEmote` (happy/angry/sad/…). */

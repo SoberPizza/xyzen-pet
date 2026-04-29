@@ -26,7 +26,6 @@
     "@pixiv/three-vrm": "^3.5.1",
     "@pixiv/three-vrm-animation": "^3.5.1",
     "@pixiv/three-vrm-core": "^3.5.1",
-    "@ricky0123/vad-web": "^0.0.28",
     "@tauri-apps/api": "^2",
     "@tresjs/core": "^5.8.0",
     "@vueuse/core": "^14.2.1",

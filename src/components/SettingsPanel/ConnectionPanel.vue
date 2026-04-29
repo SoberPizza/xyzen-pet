@@ -14,8 +14,8 @@
 
 import { onMounted, ref } from 'vue'
 
-import { initXyzen } from '../../services/xyzen'
-import { HttpError } from '../../services/xyzen/http'
+import { initXyzen } from '../../services'
+import { HttpError } from '../../services/http'
 
 const backendUrlInput = ref('')
 const tokenInput = ref('')

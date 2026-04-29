@@ -11,7 +11,7 @@
 
 import { defineStore } from 'pinia'
 
-import type { BuddyStage } from '../services/xyzen/buddies'
+import type { BuddyStage } from '../services/buddies'
 import type { AnimationDriver } from '../three/composables/vrm/animation-driver'
 import type { VrmDisplayConfig } from '../three/composables/vrm/core'
 

@@ -17,14 +17,14 @@ import type {
   BuddyStage,
   BuddyUpdate,
   RaceMetadata,
-} from '../services/xyzen/buddies'
+} from '../services/buddies'
 
 import localforage from 'localforage'
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 
-import { initXyzen } from '../services/xyzen'
-import { HttpError } from '../services/xyzen/http'
+import { initXyzen } from '../services'
+import { HttpError } from '../services/http'
 
 export type BuddyLoadErrorKind = 'auth' | 'network' | 'unknown'
 

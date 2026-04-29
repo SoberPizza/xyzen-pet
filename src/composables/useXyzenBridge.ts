@@ -31,8 +31,8 @@ import { Emotion } from '../stores/constants/emotions'
 import { useBuddyStore } from '../stores/buddy'
 import { useBuddyStateStore } from '../stores/buddy-state'
 import { useCeoChatStore } from '../stores/ceo-chat'
-import { getLastHealth } from '../services/xyzen'
-import { xyzenBus } from '../services/xyzen/event-bus'
+import { getLastHealth } from '../services'
+import { xyzenBus } from '../services/event-bus'
 import {
   XyzenActivityUpdate,
   XyzenConnected,
@@ -43,7 +43,7 @@ import {
   XyzenReplyStart,
   XyzenStateSync,
   XyzenTextChunk,
-} from '../services/xyzen/types'
+} from '../services/types'
 
 // Canonical VRM 1.0 preset names — the backend normalizes dialect names
 // (surprise, joy, sorrow, think, …) before publishing, so this table only

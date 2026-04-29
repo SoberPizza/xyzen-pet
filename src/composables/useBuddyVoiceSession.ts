@@ -34,8 +34,8 @@ import { useCeoChatStore } from '../stores/ceo-chat'
 import { useHearingStore } from '../stores/hearing'
 import { resolveConfig } from '../runtime/config'
 import { collectValidWakeTerms } from '../utils/wake-word'
-import { createAudioDecoder, type AudioDecoder } from '../services/xyzen/audio-decoder'
-import { xyzenBus } from '../services/xyzen/event-bus'
+import { createAudioDecoder, type AudioDecoder } from '../services/audio-decoder'
+import { xyzenBus } from '../services/event-bus'
 import {
   XyzenVoiceAudioChunk,
   XyzenVoiceAudioEnd,
@@ -51,8 +51,8 @@ import {
   XyzenVoiceStateChanged,
   XyzenVoiceWakeDetected,
   type XyzenVoiceState,
-} from '../services/xyzen/types'
-import { VoiceWsClient } from '../services/xyzen/voice-ws'
+} from '../services/types'
+import { VoiceWsClient } from '../services/voice-ws'
 import { useVad } from './useVad'
 import { useVoiceMic, type VoiceMicFrame } from './useVoiceMic'
 

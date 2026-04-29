@@ -10,8 +10,8 @@
  * Providers own the credential lifecycle; there is no imperative setter.
  *
  * The public surface (`ResolvedConfig` shape) is preserved so callers in
- * `services/xyzen/http.ts`, `services/xyzen/sse.ts`, and
- * `services/xyzen/index.ts` don't change.
+ * `services/http.ts`, `services/sse.ts`, and
+ * `services/index.ts` don't change.
  */
 
 import type { CredentialProvider, CredentialSnapshot } from './providers/types'

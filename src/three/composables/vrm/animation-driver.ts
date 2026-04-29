@@ -1,4 +1,4 @@
-import type { BuddyStage } from '../../../services/xyzen/buddies'
+import type { BuddyStage } from '../../../services/buddies'
 import type { GestureDescriptor } from './gesture-driver'
 
 /**

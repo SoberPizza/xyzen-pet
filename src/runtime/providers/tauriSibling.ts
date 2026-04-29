@@ -53,7 +53,21 @@ export function createTauriSiblingProvider(): CredentialProvider {
   let fanoutInstalled = false
   let fanoutUnlisten: (() => void) | null = null
 
+  function pushToRust(next: CredentialSnapshot | null): void {
+    // The Rust-side HTTP/SSE/WS clients read from a process-local credential
+    // cache populated by `set_auth_credentials`. Keep the TS composer as the
+    // single source of truth so downstream providers (future additions) don't
+    // need their own IPC plumbing.
+    const payload = next
+      ? { token: next.token, base_url: next.baseUrl }
+      : { token: null, base_url: null }
+    invoke('set_auth_credentials', { creds: payload }).catch((err) => {
+      console.warn('[tauriSibling] set_auth_credentials failed:', err)
+    })
+  }
+
   function notify(next: CredentialSnapshot | null): void {
+    pushToRust(next)
     for (const cb of listeners) {
       try {
         cb(next)
@@ -87,7 +101,11 @@ export function createTauriSiblingProvider(): CredentialProvider {
 
     async snapshot() {
       ensureFanout()
-      return fetchCredentials()
+      const snap = await fetchCredentials()
+      // Seed the Rust cache on first read so HTTP calls during boot don't
+      // race the event-driven `notify()` path.
+      pushToRust(snap)
+      return snap
     },
 
     onChange(cb) {
