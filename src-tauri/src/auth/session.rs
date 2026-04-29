@@ -305,19 +305,8 @@ fn now_ms() -> i64 {
 mod tests {
     use super::*;
 
-    #[test]
-    fn status_serializes_with_kind_tag() {
-        let pending = AuthStatus::Pending {
-            user_code: "ABCD-1234".into(),
-            verification_uri: "https://example".into(),
-            verification_uri_complete: "https://example?u=ABCD".into(),
-            expires_at_ms: 1_700_000_000_000,
-        };
-        let json = serde_json::to_string(&pending).unwrap();
-        assert!(json.contains("\"kind\":\"pending\""));
-        assert!(json.contains("\"user_code\":\"ABCD-1234\""));
-    }
-
+    // `oauth_message` is a private helper; integration tests can't reach it,
+    // so its copy-coverage lives here.
     #[test]
     fn oauth_message_known_codes() {
         assert!(oauth_message("access_denied").contains("denied"));

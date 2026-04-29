@@ -106,26 +106,3 @@ pub fn settings_all<R: Runtime>(
     })
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn value_json_roundtrips_through_serde() {
-        let original = serde_json::json!({"brightness": 0.8, "theme": "dark"});
-        let encoded = serde_json::to_string(&original).unwrap();
-        let decoded: serde_json::Value = serde_json::from_str(&encoded).unwrap();
-        assert_eq!(original, decoded);
-    }
-
-    #[test]
-    fn settings_changed_serialises() {
-        let c = SettingsChanged {
-            key: "brightness".into(),
-            value_json: Some("0.8".into()),
-        };
-        let s = serde_json::to_string(&c).unwrap();
-        assert!(s.contains("\"brightness\""));
-        assert!(s.contains("\"0.8\""));
-    }
-}

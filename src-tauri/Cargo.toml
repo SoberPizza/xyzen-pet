@@ -59,6 +59,12 @@ tauri-specta = { version = "=2.0.0-rc.24", features = ["derive", "typescript"] }
 name = "gen-bindings"
 path = "src/bin/gen_bindings.rs"
 
+[dev-dependencies]
+# Async assertion helpers for #[tokio::test] flows.
+tokio-test = "0.4"
+# Scratch paths for the Silero load error-path test.
+tempfile = "3"
+
 [profile.release]
 panic = "abort"
 codegen-units = 1

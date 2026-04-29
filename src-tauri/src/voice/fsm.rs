@@ -14,19 +14,3 @@ pub enum VoiceState {
     BargeIn,
     Standby,
 }
-
-impl VoiceState {
-    /// Serde's kebab-case output — exposed for test assertions that want
-    /// to avoid JSON round-tripping.
-    #[cfg(test)]
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            Self::Idle => "idle",
-            Self::Listening => "listening",
-            Self::Preroll => "preroll",
-            Self::Speaking => "speaking",
-            Self::BargeIn => "barge-in",
-            Self::Standby => "standby",
-        }
-    }
-}

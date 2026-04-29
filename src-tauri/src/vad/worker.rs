@@ -26,12 +26,88 @@ use tracing::{debug, info, warn};
 
 use super::silero::{Silero, WINDOW_SAMPLES};
 
-// Silero v5 defaults (tuned on WASM to avoid false-positives in noisy rooms).
-const POSITIVE_THRESHOLD: f32 = 0.78;
-const NEGATIVE_THRESHOLD: f32 = 0.40;
-const MIN_SPEECH_MS: u64 = 560;
-const REDEMPTION_FRAMES: u32 = 8; // ≈256 ms at 32 ms/window
 const FRAME_CAPACITY: usize = 8;
+
+/// Action the caller should take after `VadFsm::feed`. Keeping side effects
+/// (channel sends, `silero.reset()`) out of the FSM means it can be driven
+/// by synthetic probability sequences in tests.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FsmAction {
+    /// Nothing to emit.
+    Continue,
+    /// Speech onset — emit `VadSignal::SpeechStart`.
+    SpeechStart,
+    /// Speech ended after reaching `MIN_SPEECH_MS` — emit
+    /// `VadSignal::SpeechEnd` and reset the model LSTM state.
+    SpeechEnd,
+    /// Brief burst below `MIN_SPEECH_MS`; swallow the `SpeechEnd` but still
+    /// reset the model state so the next utterance starts fresh.
+    Misfire,
+}
+
+/// Hysteresis FSM tuned to Silero v5 defaults (calibrated against
+/// `@ricky0123/vad-web`'s WASM behaviour to avoid false-positives in
+/// noisy rooms).
+pub struct VadFsm {
+    in_speech: bool,
+    quiet_streak: u32,
+    speech_ms: u64,
+}
+
+impl VadFsm {
+    pub const POSITIVE_THRESHOLD: f32 = 0.78;
+    pub const NEGATIVE_THRESHOLD: f32 = 0.40;
+    pub const MIN_SPEECH_MS: u64 = 560;
+    pub const REDEMPTION_FRAMES: u32 = 8; // ≈256 ms at 32 ms/window
+
+    pub fn new() -> Self {
+        Self {
+            in_speech: false,
+            quiet_streak: 0,
+            speech_ms: 0,
+        }
+    }
+
+    /// Advance one window. `prob` is the Silero output for a 32 ms window;
+    /// `window_ms` is the logical forward step per inference (20 ms when
+    /// sliding by one IPC frame).
+    pub fn feed(&mut self, prob: f32, window_ms: u64) -> FsmAction {
+        if !self.in_speech {
+            if prob >= Self::POSITIVE_THRESHOLD {
+                self.in_speech = true;
+                self.quiet_streak = 0;
+                self.speech_ms = window_ms;
+                return FsmAction::SpeechStart;
+            }
+            return FsmAction::Continue;
+        }
+
+        self.speech_ms += window_ms;
+        if prob < Self::NEGATIVE_THRESHOLD {
+            self.quiet_streak += 1;
+            if self.quiet_streak >= Self::REDEMPTION_FRAMES {
+                let reached_min = self.speech_ms >= Self::MIN_SPEECH_MS;
+                self.in_speech = false;
+                self.quiet_streak = 0;
+                self.speech_ms = 0;
+                return if reached_min {
+                    FsmAction::SpeechEnd
+                } else {
+                    FsmAction::Misfire
+                };
+            }
+        } else {
+            self.quiet_streak = 0;
+        }
+        FsmAction::Continue
+    }
+}
+
+impl Default for VadFsm {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl Default for VadWorker {
     fn default() -> Self {
@@ -139,7 +215,7 @@ impl VadWorker {
     }
 }
 
-fn decode_pcm16(bytes: &[u8]) -> Option<Vec<f32>> {
+pub fn decode_pcm16(bytes: &[u8]) -> Option<Vec<f32>> {
     if bytes.len() % 2 != 0 {
         return None;
     }
@@ -173,9 +249,7 @@ fn run_blocking(
     let mut window_buf: Vec<f32> = Vec::with_capacity(WINDOW_SAMPLES * 2);
     let window_ms_per_frame: u64 = 20; // 20ms per IPC frame
 
-    let mut in_speech = false;
-    let mut quiet_streak: u32 = 0;
-    let mut speech_ms: u64 = 0;
+    let mut fsm = VadFsm::new();
 
     while let Some(frame) = frame_rx.blocking_recv() {
         window_buf.extend_from_slice(&frame);
@@ -196,28 +270,17 @@ fn run_blocking(
 
             let _ = sink.send(VadSignal::Frame { is_speech: prob });
 
-            if !in_speech {
-                if prob >= POSITIVE_THRESHOLD {
-                    in_speech = true;
-                    quiet_streak = 0;
-                    speech_ms = window_ms_per_frame;
+            match fsm.feed(prob, window_ms_per_frame) {
+                FsmAction::Continue => {}
+                FsmAction::SpeechStart => {
                     let _ = sink.send(VadSignal::SpeechStart);
                 }
-            } else {
-                speech_ms += window_ms_per_frame;
-                if prob < NEGATIVE_THRESHOLD {
-                    quiet_streak += 1;
-                    if quiet_streak >= REDEMPTION_FRAMES {
-                        in_speech = false;
-                        if speech_ms >= MIN_SPEECH_MS {
-                            let _ = sink.send(VadSignal::SpeechEnd);
-                        }
-                        speech_ms = 0;
-                        quiet_streak = 0;
-                        silero.reset();
-                    }
-                } else {
-                    quiet_streak = 0;
+                FsmAction::SpeechEnd => {
+                    let _ = sink.send(VadSignal::SpeechEnd);
+                    silero.reset();
+                }
+                FsmAction::Misfire => {
+                    silero.reset();
                 }
             }
         }

@@ -4,14 +4,17 @@ use tauri::{
 };
 use tracing_subscriber::EnvFilter;
 
-mod auth;
-mod buddy_stub;
-mod events;
+// Modules are `pub` so the integration-test crate under `tests/` can
+// exercise their public surface (VadFsm, AuthClient, SettingsChanged, …).
+// The Tauri app itself only uses what's re-exported below.
+pub mod auth;
+pub mod buddy_stub;
+pub mod events;
 pub mod ipc;
-mod settings;
-mod state;
-mod vad;
-mod voice;
+pub mod settings;
+pub mod state;
+pub mod vad;
+pub mod voice;
 
 use auth::AuthSession;
 use state::AppState;
@@ -70,7 +73,7 @@ async fn open_buddy_settings_window(app: tauri::AppHandle) -> Result<(), String>
         WebviewUrl::App("index.html#/settings".into()),
     )
     .title("Buddy Settings")
-    .inner_size(480.0, 640.0)
+    .inner_size(800.0, 600.0)
     .min_inner_size(360.0, 480.0)
     .resizable(true)
     .decorations(false)

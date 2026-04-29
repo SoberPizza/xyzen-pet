@@ -67,10 +67,6 @@ impl VoiceSessions {
         }
     }
 
-    #[cfg(test)]
-    pub fn state(&self, id: &str) -> Option<VoiceState> {
-        self.inner.lock().ok()?.get(id).copied()
-    }
 }
 
 fn new_session_id() -> String {
@@ -131,17 +127,13 @@ pub fn voice_push_frame(
 mod tests {
     use super::*;
 
+    // `new_session_id` is private; integration tests can't observe the
+    // uniqueness guarantee, so it stays inline.
     #[test]
     fn new_session_id_is_unique() {
         let a = new_session_id();
         std::thread::sleep(std::time::Duration::from_nanos(1));
         let b = new_session_id();
         assert_ne!(a, b);
-    }
-
-    #[test]
-    fn voice_state_as_str_is_stable() {
-        assert_eq!(VoiceState::Idle.as_str(), "idle");
-        assert_eq!(VoiceState::BargeIn.as_str(), "barge-in");
     }
 }

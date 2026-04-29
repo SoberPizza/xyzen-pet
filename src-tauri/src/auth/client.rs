@@ -73,7 +73,8 @@ impl AuthClient {
         }
     }
 
-    fn url(&self, endpoint: &str) -> String {
+    /// Exposed for integration tests that assert the full URL layout.
+    pub fn url(&self, endpoint: &str) -> String {
         format!("{}{}{}", self.origin, API_PREFIX, endpoint)
     }
 
@@ -147,27 +148,13 @@ struct OAuthErrorDetail {
 mod tests {
     use super::*;
 
-    #[test]
-    fn url_joins_origin_and_prefix() {
-        let c = AuthClient::new("http://localhost/".to_string());
-        assert_eq!(
-            c.url("/authorize"),
-            "http://localhost/xyzen/api/v1/auth/buddy/authorize"
-        );
-    }
-
+    // OAuthErrorBody is private; the integration suite can't see it, so the
+    // one assertion that keeps the FastAPI error-envelope contract honest
+    // stays inline.
     #[test]
     fn oauth_error_body_parses() {
         let raw = r#"{"detail":{"error":"authorization_pending"}}"#;
         let parsed: OAuthErrorBody = serde_json::from_str(raw).unwrap();
         assert_eq!(parsed.detail.error, "authorization_pending");
-    }
-
-    #[test]
-    fn token_response_accepts_missing_refresh() {
-        let raw = r#"{"access_token":"at","token_type":"Bearer"}"#;
-        let parsed: TokenResponse = serde_json::from_str(raw).unwrap();
-        assert_eq!(parsed.access_token, "at");
-        assert!(parsed.refresh_token.is_none());
     }
 }

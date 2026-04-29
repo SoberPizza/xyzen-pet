@@ -25,13 +25,3 @@ impl Default for AppState {
         Self::new()
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn smoke_construct() {
-        let _ = AppState::new();
-    }
-}
