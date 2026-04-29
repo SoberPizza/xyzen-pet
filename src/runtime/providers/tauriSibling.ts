@@ -1,14 +1,14 @@
 /**
  * Tauri-sibling credential provider.
  *
- * Buddy runs inside a Tauri webview — either as a sibling of the main Xyzen
- * window in the desktop shell, or as a standalone Tauri binary on RPi (where
- * this provider yields null and `DevicePairingProvider` takes over).
- *
- * The main Xyzen window pushes its live Casdoor access token into a
- * process-level Rust bridge (`desktop/src-tauri/src/auth_bridge.rs`). Buddy
- * pulls via `get_auth_credentials` at boot and listens to the
+ * Buddy runs inside a Tauri webview as a sibling of the main Xyzen window.
+ * The main window pushes its live Casdoor access token into a process-level
+ * Rust bridge (`desktop/src-tauri/src/auth_bridge.rs`). Buddy pulls via
+ * `get_auth_credentials` at boot and listens to the
  * `auth-credentials-updated` event for rotations.
+ *
+ * `isAvailable()` is still gated on `__TAURI_INTERNALS__` so the composer
+ * can skip this provider cleanly under jsdom.
  */
 
 import { invoke } from '@tauri-apps/api/core'
@@ -86,14 +86,13 @@ export function createTauriSiblingProvider(): CredentialProvider {
     },
 
     async snapshot() {
-      if (!isTauri()) return null
       ensureFanout()
       return fetchCredentials()
     },
 
     onChange(cb) {
       listeners.add(cb)
-      if (isTauri()) ensureFanout()
+      ensureFanout()
       return () => {
         listeners.delete(cb)
         if (listeners.size === 0 && fanoutUnlisten) {
@@ -105,7 +104,6 @@ export function createTauriSiblingProvider(): CredentialProvider {
     },
 
     async invalidate() {
-      if (!isTauri()) return
       // Re-pull fresh credentials and push to listeners directly. If the
       // Rust bridge is up-to-date we resolve immediately without waiting
       // for the debounced event to arrive.

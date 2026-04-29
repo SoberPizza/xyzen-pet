@@ -1,15 +1,12 @@
 /**
  * CredentialProvider: pluggable source for Buddy's `{baseUrl, token}` pair.
  *
- * Different deployments use different sources:
- *  - `tauriSibling`: Buddy runs as a sibling webview in the Xyzen desktop
- *    shell; the main window pushes its Casdoor token through a Rust-side
- *    bridge and Buddy pulls it via Tauri IPC.
- *  - `devicePairing`: Buddy runs standalone on an RPi kiosk and pairs with
- *    the backend via a device-authorization grant. Stub for now.
+ * The only provider today is `tauriSibling`: Buddy runs as a sibling webview
+ * in the Xyzen desktop shell, and the main window pushes its Casdoor token
+ * through a Rust-side bridge which Buddy pulls via Tauri IPC.
  *
  * `buddy/src/runtime/config.ts` composes providers in priority order and
- * picks the first one that yields credentials. See the plan for details.
+ * picks the first one that yields credentials.
  */
 
 export interface CredentialSnapshot {

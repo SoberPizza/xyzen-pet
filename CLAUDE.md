@@ -1,14 +1,14 @@
 # Buddy — Project Guide for Claude
 
-`@xyzen/buddy` is the VRM avatar renderer used by the Xyzen desktop app. It was
-extracted from the upstream `pet/airi` project and is normally mounted inside a
-Tauri window; the browser surface at `localhost:5174` is **dev-only**.
+`@xyzen/buddy` is the VRM avatar renderer used by the Xyzen desktop app. It runs **only** inside a Tauri
+webview — either as a sibling of the main Xyzen window or as a standalone RPi
+binary. It is not supported as a plain browser tab.
 
 ## Quick start
 
 ```bash
 yarn install        # or pnpm / npm — yarn.lock is the source of truth
-yarn dev            # Vite on http://localhost:5174 (port is pinned in vite.config.ts)
+yarn tauri dev      # launches the Tauri debug window (auto-starts Vite on :5174)
 yarn typecheck      # vue-tsc --noEmit
 yarn lint           # eslint src/ tests/
 yarn test           # vitest run (jsdom)
@@ -16,9 +16,9 @@ yarn build          # outputs to dist/
 yarn knip           # unused-exports check
 ```
 
-The dev server is Tauri's debug load target. Standalone browser use is supported
-but several features (window resize IPC, Tauri-sibling credentials) silently
-no-op without `window.__TAURI__`.
+The Vite dev server at `:5174` is Tauri's debug load target — Tauri launches it
+via `beforeDevCommand` and points `devUrl` at it. `yarn dev` on its own only
+exists to satisfy that hook; do not open `http://localhost:5174` in a browser.
 
 ## Stack
 
@@ -39,8 +39,8 @@ no-op without `window.__TAURI__`.
 | `services/xyzen/`     | Backend client: `http.ts`, `sse.ts`, `voice-ws.ts`, `buddies.ts`, `ceo-chat.ts`, `event-bus.ts`, `audio-decoder.ts`. |
 | `composables/`        | `useBuddyVoiceSession`, `useXyzenBridge`, `useVad`, `useVoiceMic`. |
 | `stores/`             | Pinia: `audio`, `audio-device`, `buddy`, `buddy-state`, `ceo-chat`, `display-models`, `general`, `hearing`, `settings`, plus `constants/{emotions,trait-prompts}.ts`. |
-| `runtime/`            | `config.ts` (resolver) + `providers/` (`tauriSibling`, `devicePairing`, `types`). |
-| `components/`         | `SettingsDialog`, `SettingsStandalone`, `SettingsPreviewPopover`, `BuddyDetailsDialog`, `modules/`. |
+| `runtime/`            | `config.ts` (resolver) + `providers/` (`tauriSibling`, `types`). |
+| `components/`         | `SettingsDialog`, `SettingsStandalone`, `BuddyDetailsDialog`, `modules/`. |
 | `audio/`              | `pcm16-capture-worklet.js` (AudioWorklet node loaded by the mic path). |
 | `locales/`            | `en`, `zh-CN`, `index.ts`. |
 | `utils/wake-word.ts`  | Wake-word detection helper. |
@@ -51,16 +51,16 @@ Static assets:
 
 ## Architectural notes
 
-**Credential chain.** `runtime/config.ts` walks `defaultProviders()` in order
-(`tauriSibling` → `devicePairing`) and picks the first that yields a
-`{baseUrl, token}` snapshot. Providers own token rotation via `onChange`;
-`setToken`/`setBackendUrl` are deprecated no-ops.
+**Credential chain.** `runtime/config.ts` walks `defaultProviders()` and picks
+the first that yields a `{baseUrl, token}` snapshot. The only provider today
+is `tauriSibling`; providers own the credential lifecycle and rotate via
+`onChange` — there is no imperative setter.
 
 **Backend bootstrap.** `services/xyzen/index.ts` is fire-and-forget: it kicks
 off a `/xyzen/api/health` probe, opens an SSE stream to
 `/xyzen/api/v1/buddy/events`, and reconnects on token or base-URL change. The
-Vue app mounts regardless of backend state — expect `Failed to initialize
-Xyzen backend` in the console when running standalone.
+Vue app mounts regardless of backend state so the avatar still renders if the
+Rust bridge hasn't pushed credentials yet.
 
 **Voice session.** `useBuddyVoiceSession` composes mic capture
 (`pcm16-capture-worklet`) + VAD + the voice WS. `useXyzenBridge` routes
@@ -80,9 +80,8 @@ in `model-store.modelOffset` and is applied inside `VRMModel.vue`. Drag math
 converts screen pixels to world units using current camera FOV + distance.
 
 **Settings window.** The same bundle serves two surfaces. `#/settings`
-renders `SettingsStandalone`; the default route renders the overlay.
-Tauri opens settings in a dedicated window via `open_buddy_settings_window`;
-outside Tauri, `SettingsDialog` opens as an in-app modal.
+renders `SettingsStandalone`; the default route renders the overlay. Tauri
+opens settings in a dedicated window via `open_buddy_settings_window`.
 
 ## Vite quirks (already wired in `vite.config.ts`)
 
@@ -108,9 +107,11 @@ outside Tauri, `SettingsDialog` opens as an in-app modal.
 
 ## Testing
 
-Vitest with jsdom. The `isTauri` guard in `App.vue` lets mounts under jsdom
-skip Tauri IPC cleanly. Tests live under `tests/` (referenced by `tsconfig`
-`include` and the `lint` script).
+Vitest with jsdom. Tauri IPC calls inside `App.vue` go through a swallowed-
+error `tauriInvoke` shim, and `tauriSibling`'s `fetchCredentials` wraps
+`invoke()` in try/catch, so jsdom mounts don't blow up when `__TAURI_INTERNALS__`
+is missing. Tests live under `tests/` (referenced by `tsconfig` `include` and
+the `lint` script).
 
 ## Known footguns
 

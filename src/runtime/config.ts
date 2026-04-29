@@ -2,25 +2,20 @@
  * Runtime config resolver — provider-composer edition.
  *
  * Buddy sources its `{baseUrl, token}` pair from a chain of
- * `CredentialProvider`s. Today the chain is:
+ * `CredentialProvider`s. Today the only provider is `tauriSibling`, which
+ * receives the Casdoor access token from the Xyzen desktop shell via IPC.
  *
- *   1. tauriSibling  → Xyzen desktop shell pushes the Casdoor token via IPC
- *   2. devicePairing → STUB (RPi kiosk future work)
- *
- * Each provider has its own availability check and change-notification
- * stream. The composer picks the first available one whose `snapshot()`
- * yields a token, then forwards that provider's `onChange` to call sites.
+ * The composer picks the first available provider whose `snapshot()` yields
+ * a token, then forwards that provider's `onChange` stream to call sites.
+ * Providers own the credential lifecycle; there is no imperative setter.
  *
  * The public surface (`ResolvedConfig` shape) is preserved so callers in
  * `services/xyzen/http.ts`, `services/xyzen/sse.ts`, and
- * `services/xyzen/index.ts` don't change. `setToken` / `setBackendUrl`
- * are retained as no-ops with a deprecation warning — the Connection
- * tab in SettingsDialog is the last caller and is being removed.
+ * `services/xyzen/index.ts` don't change.
  */
 
 import type { CredentialProvider, CredentialSnapshot } from './providers/types'
 
-import { createDevicePairingProvider } from './providers/devicePairing'
 import { createTauriSiblingProvider } from './providers/tauriSibling'
 
 export interface ResolvedConfig {
@@ -36,10 +31,6 @@ export interface ResolvedConfig {
   onBackendUrlChange: (cb: (baseUrl: string) => void) => () => void
   /** Request that the active provider re-pull its credentials (e.g. after a 401). */
   invalidateCredentials: () => Promise<void>
-  /** Deprecated — providers own the credential lifecycle now. No-op with warning. */
-  setToken: (next: string) => void
-  /** Deprecated — providers own the credential lifecycle now. No-op with warning. */
-  setBackendUrl: (next: string) => void
 }
 
 function stripTrailingSlash(url: string): string {
@@ -56,7 +47,7 @@ function deriveEventsUrl(baseUrl: string): string {
  * can inject mocks via `resolveConfig({ providers })`.
  */
 export function defaultProviders(): CredentialProvider[] {
-  return [createTauriSiblingProvider(), createDevicePairingProvider()]
+  return [createTauriSiblingProvider()]
 }
 
 export interface ResolveOptions {
@@ -144,11 +135,5 @@ export async function resolveConfig(options: ResolveOptions = {}): Promise<Resol
       return () => baseUrlListeners.delete(cb)
     },
     invalidateCredentials,
-    setToken() {
-      console.warn('[runtime/config] setToken is a no-op — credentials are provider-managed.')
-    },
-    setBackendUrl() {
-      console.warn('[runtime/config] setBackendUrl is a no-op — credentials are provider-managed.')
-    },
   }
 }

@@ -13,8 +13,6 @@ import { useGeneralStore } from './stores/general'
 import { useSettingsStageModel } from './stores/settings'
 import { useBuddyVoiceSession } from './composables/useBuddyVoiceSession'
 import { useXyzenBridge } from './composables/useXyzenBridge'
-import SettingsDialog from './components/SettingsDialog.vue'
-import SettingsPreviewPopover from './components/SettingsPreviewPopover.vue'
 import SettingsStandalone from './components/SettingsStandalone.vue'
 import { animations } from './three/assets/vrm'
 import ThreeScene from './three/components/ThreeScene.vue'
@@ -56,14 +54,6 @@ watch(
 
 const { brightness } = storeToRefs(generalStore)
 const buddyRootStyle = computed(() => ({ filter: `brightness(${brightness.value})` }))
-
-const isDev = import.meta.env.DEV
-// Buddy is Tauri-only in production (desktop sibling today, RPi binary later).
-// The browser-tab dev mode at :5174 has been retired — see buddy/CLAUDE.md.
-// Keep the probe so debug features that don't depend on Tauri can still render
-// when Vue is mounted in a test runner (jsdom).
-const isTauri = typeof window !== 'undefined' && (window as unknown as { __TAURI__?: unknown }).__TAURI__ !== undefined
-const showPreview = isDev && !isTauri
 
 // The bundled buddy app serves two surfaces: the main overlay window (default
 // route) and the Settings window (#/settings). Settings runs in its own Tauri
@@ -173,15 +163,15 @@ function onDragUp(e: PointerEvent) {
   drag.value = null
 }
 
+// Fire-and-forget Tauri IPC. Errors are swallowed so jsdom test mounts (and
+// any transient bridge failure) don't blow up the caller.
 function tauriInvoke(cmd: string, args?: Record<string, unknown>): void {
-  if (!isTauri) return
   invoke(cmd, args).catch(() => {})
 }
 
 // --- Keep the Tauri window in sync with the persisted logical size. ---
 let pendingResize: number | null = null
 function scheduleTauriResize() {
-  if (!isTauri) return
   if (pendingResize !== null) return
   pendingResize = requestAnimationFrame(() => {
     pendingResize = null
@@ -194,21 +184,10 @@ function scheduleTauriResize() {
 watch(windowSize, scheduleTauriResize, { deep: true })
 
 // --- UI panels ---
-// `showSettings` is only used in the non-Tauri fallback (dev browser), where
-// Settings still opens as an in-app modal. In Tauri we open a dedicated window.
-const showSettings = ref(false)
-const previewOpen = ref(false)
-let previewHideTimer: ReturnType<typeof setTimeout> | null = null
-
-const fabsVisible = computed(() =>
-  hovering.value || showSettings.value || editMode.value || (showPreview && previewOpen.value))
+const fabsVisible = computed(() => hovering.value || editMode.value)
 
 function openSettings() {
-  if (isTauri) {
-    tauriInvoke('open_buddy_settings_window')
-    return
-  }
-  showSettings.value = true
+  tauriInvoke('open_buddy_settings_window')
 }
 
 // Drag-vs-click guard for the Settings FAB. The button carries
@@ -241,43 +220,6 @@ function onSettingsClick() {
   settingsWasDragged.value = false
   if (dragged) return
   openSettings()
-}
-
-function openPreview() {
-  if (previewHideTimer) {
-    clearTimeout(previewHideTimer)
-    previewHideTimer = null
-  }
-  previewOpen.value = true
-}
-
-function scheduleClosePreview() {
-  if (previewHideTimer)
-    clearTimeout(previewHideTimer)
-  previewHideTimer = setTimeout(() => {
-    previewOpen.value = false
-    previewHideTimer = null
-  }, 180)
-}
-
-async function onPreviewEmotion(name: string, intensity: number) {
-  if (stageModelRenderer.value === 'vrm')
-    await vrmViewerRef.value?.setExpression(name, intensity)
-}
-
-async function onPreviewViseme(name: 'aa' | 'ih' | 'ou' | 'ee' | 'oh') {
-  if (stageModelRenderer.value === 'vrm')
-    await vrmViewerRef.value?.setViseme(name)
-}
-
-async function onPreviewBlink(which: 'blink' | 'blinkLeft' | 'blinkRight') {
-  if (stageModelRenderer.value === 'vrm')
-    await vrmViewerRef.value?.setBlink(which)
-}
-
-async function onPreviewLookAt(dir: 'lookUp' | 'lookDown' | 'lookLeft' | 'lookRight') {
-  if (stageModelRenderer.value === 'vrm')
-    await vrmViewerRef.value?.setLookAt(dir)
 }
 
 const vrmViewerRef = ref<InstanceType<typeof ThreeScene>>()
@@ -391,12 +333,10 @@ onMounted(async () => {
 
   // Restore persisted window size on first paint so buddy matches the
   // user's last layout. Rust will clamp + re-anchor to the bottom-right.
-  if (isTauri) {
-    tauriInvoke('resize_buddy_window', {
-      w: windowSize.value.w,
-      h: windowSize.value.h,
-    })
-  }
+  tauriInvoke('resize_buddy_window', {
+    w: windowSize.value.w,
+    h: windowSize.value.h,
+  })
 
   buddyStore.initialize().catch(err => console.warn('[buddy] buddy init failed', err))
   ceoChatStore
@@ -424,7 +364,6 @@ onBeforeUnmount(() => {
   <div
     v-else
     class="buddy-root"
-    :class="{ 'buddy-dev': isDev && !isTauri, 'buddy-tauri': isTauri }"
     :style="buddyRootStyle"
     @mouseenter="hovering = true"
     @mouseleave="hovering = false"
@@ -465,7 +404,6 @@ onBeforeUnmount(() => {
           @pointercancel="onDragUp"
         />
         <div
-          v-if="isTauri"
           class="edit-resize-handle"
           title="Drag to resize the window"
           @pointerdown="onResizeHandleDown"
@@ -496,16 +434,6 @@ onBeforeUnmount(() => {
         class="fab-container"
         :class="{ 'fab-hidden': !fabsVisible }"
       >
-        <SettingsPreviewPopover
-          v-if="showPreview"
-          :open="previewOpen && !showSettings"
-          @mouseenter="openPreview"
-          @mouseleave="scheduleClosePreview"
-          @emotion="onPreviewEmotion"
-          @viseme="onPreviewViseme"
-          @blink="onPreviewBlink"
-          @look-at="onPreviewLookAt"
-        />
         <button
           class="fab"
           :class="['mic-fab', `mic-fab--${micFabState}`]"
@@ -597,14 +525,11 @@ onBeforeUnmount(() => {
         </button>
         <button
           class="fab settings-fab"
-          :class="{ active: showSettings }"
-          :data-tauri-drag-region="isTauri ? '' : undefined"
+          data-tauri-drag-region=""
           title="Settings (drag to move window)"
           @pointerdown="onSettingsPointerDown"
           @pointermove="onSettingsPointerMove"
           @click="onSettingsClick"
-          @mouseenter="showPreview ? openPreview() : undefined"
-          @mouseleave="showPreview ? scheduleClosePreview() : undefined"
         >
           <svg
             width="18"
@@ -625,12 +550,6 @@ onBeforeUnmount(() => {
         </button>
       </div>
     </div>
-
-    <!-- Web fallback: in-app settings modal when not running under Tauri. -->
-    <SettingsDialog
-      v-if="!isTauri"
-      v-model="showSettings"
-    />
   </div>
 </template>
 
@@ -642,8 +561,6 @@ onBeforeUnmount(() => {
   position: relative;
   background: transparent;
 }
-/* Dev build: opaque background helps contrast in a non-transparent browser. */
-.buddy-dev { background: #171717; }
 
 .buddy-stage {
   position: relative;
@@ -659,8 +576,6 @@ onBeforeUnmount(() => {
 .buddy-scene {
   width: 100%;
   height: 100%;
-}
-.buddy-tauri .buddy-scene {
   border-radius: 16px;
   overflow: hidden;
 }
