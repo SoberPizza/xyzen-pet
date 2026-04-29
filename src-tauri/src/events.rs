@@ -3,3 +3,5 @@
 
 pub const VAD_SPEECH_START: &str = "vad://speech-start";
 pub const VAD_SPEECH_END: &str = "vad://speech-end";
+
+pub const AUTH_STATUS_EVENT: &str = "auth://status";

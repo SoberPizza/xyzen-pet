@@ -4,6 +4,7 @@ use tauri::{
 };
 use tracing_subscriber::EnvFilter;
 
+mod auth;
 mod buddy_stub;
 mod events;
 pub mod ipc;
@@ -12,6 +13,7 @@ mod state;
 mod vad;
 mod voice;
 
+use auth::AuthSession;
 use state::AppState;
 use voice::VoiceSessions;
 
@@ -105,6 +107,7 @@ pub fn run() {
         .plugin(tauri_plugin_store::Builder::new().build())
         .manage(AppState::new())
         .manage(VoiceSessions::new())
+        .manage(AuthSession::new())
         .setup(|app| {
             if let Some(win) = app.get_webview_window("main") {
                 if let Ok(Some(monitor)) = win.current_monitor() {
@@ -143,6 +146,11 @@ pub fn run() {
             voice::session::voice_push_frame,
             buddy_stub::buddy_get_active,
             buddy_stub::buddy_list,
+            // Auth (Xyzen device-code flow).
+            auth::session::auth_status,
+            auth::session::auth_start,
+            auth::session::auth_cancel,
+            auth::session::auth_sign_out,
             // VAD (Silero-on-ort) — Rust-only concern; stays as a command
             // surface so the webview can hand over mic frames if needed.
             ipc::vad_cmd::vad_start,

@@ -37,6 +37,10 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
+# HTTP client for the Xyzen auth flow (device-code grant). `rustls-tls` keeps
+# the Pi aarch64 image free of a system-OpenSSL dep.
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
+
 # VAD. `ort` 2.x is API-stable enough for production; pinned to rc to
 # guard against API churn. `std` pulls the filesystem load path needed
 # for `commit_from_file`.

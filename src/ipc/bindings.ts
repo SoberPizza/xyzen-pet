@@ -16,6 +16,10 @@ export const commands = {
 	voicePushFrame: (sessionId: string, pcm: number[]) => typedError<null, string>(__TAURI_INVOKE("voice_push_frame", { sessionId, pcm })),
 	buddyGetActive: () => __TAURI_INVOKE<BuddyDisplayInfo>("buddy_get_active"),
 	buddyList: () => __TAURI_INVOKE<BuddyDisplayInfo[]>("buddy_list"),
+	authStatus: () => __TAURI_INVOKE<AuthStatus>("auth_status"),
+	authStart: () => typedError<AuthStartResponse, string>(__TAURI_INVOKE("auth_start")),
+	authCancel: () => typedError<null, string>(__TAURI_INVOKE("auth_cancel")),
+	authSignOut: () => typedError<null, string>(__TAURI_INVOKE("auth_sign_out")),
 };
 
 /* Types */
@@ -23,6 +27,24 @@ export const commands = {
 export type AppInfo = {
 	version: string,
 };
+
+/**
+ *  Payload returned synchronously from `auth_start` so the UI can show the
+ *  user code immediately without waiting for the first `auth://status` event.
+ */
+export type AuthStartResponse = {
+	user_code: string,
+	verification_uri: string,
+	verification_uri_complete: string,
+	expires_in: number,
+	interval: number,
+};
+
+/**
+ *  Snapshot of the current flow state. `kind` drives the UI switch in
+ *  `ConnectionPanel.vue`.
+ */
+export type AuthStatus = { kind: "idle" } | { kind: "pending"; user_code: string; verification_uri: string; verification_uri_complete: string; expires_at_ms: number } | { kind: "authenticated" } | { kind: "error"; code: string; message: string };
 
 export type BuddyDisplayInfo = {
 	id: string,

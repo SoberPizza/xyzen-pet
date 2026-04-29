@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 use specta::Type;
 use tauri_specta::{collect_commands, collect_events, Builder};
 
+use crate::auth;
 use crate::buddy_stub;
 use crate::settings;
 use crate::voice::session as voice_session;
@@ -41,6 +42,10 @@ pub fn bindings_builder() -> Builder<tauri::Wry> {
             voice_session::voice_push_frame,
             buddy_stub::buddy_get_active,
             buddy_stub::buddy_list,
+            auth::session::auth_status,
+            auth::session::auth_start::<tauri::Wry>,
+            auth::session::auth_cancel::<tauri::Wry>,
+            auth::session::auth_sign_out::<tauri::Wry>,
         ])
         .events(collect_events![])
 }
