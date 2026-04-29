@@ -5,8 +5,11 @@
  * `standby_wake` mode. CJK terms use tighter length bounds (2–8 chars)
  * than Latin ones (4–16) because each CJK character carries more
  * phonetic weight — an STT-friendly lower bound is shorter.
- * Consumers: `BuddyDetailsDialog` (on-input feedback),
- * `useBuddyVoiceSession` (collecting the wake list sent to the server).
+ *
+ * Consumer today: `BuddyDetailsDialog` (on-input feedback). A future
+ * voice-session rebuild will also want a `collectValidWakeTerms` helper
+ * that dedupes + filters the buddy's name+nicknames list before sending
+ * to the server.
  */
 
 export type WakeTermValidation
@@ -35,18 +38,4 @@ export function validateWakeTerm(raw: string): WakeTermValidation {
   if (len < min) return { ok: false, reason: 'too-short' }
   if (len > max) return { ok: false, reason: 'too-long' }
   return { ok: true, value: term }
-}
-
-export function collectValidWakeTerms(raw: Iterable<string | undefined>): string[] {
-  const seen = new Set<string>()
-  const out: string[] = []
-  for (const r of raw) {
-    const result = validateWakeTerm(r ?? '')
-    if (!result.ok) continue
-    const key = result.value.toLocaleLowerCase()
-    if (seen.has(key)) continue
-    seen.add(key)
-    out.push(result.value)
-  }
-  return out
 }

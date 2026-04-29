@@ -4,6 +4,9 @@ version = "0.1.0"
 description = "Xyzen Buddy desktop overlay"
 edition = "2021"
 rust-version = "1.77"
+# `gen-bindings` is a dev-time binary for regenerating src/ipc/bindings.ts;
+# the app itself is the default `buddy` binary (built from src/main.rs).
+default-run = "buddy"
 
 [lib]
 name = "buddy_lib"
@@ -22,35 +25,35 @@ ort-dynamic = ["ort/load-dynamic"]
 
 [dependencies]
 tauri = { version = "2", features = ["macos-private-api"] }
+tauri-plugin-store = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
-# Networking + async runtime (stages 2–5). Added in stage 1 so every module
-# compiles against the same toolchain pinning; unused-lint is allowed until
-# the ports land.
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "io-util"] }
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "stream", "gzip"] }
-tokio-tungstenite = { version = "0.23", default-features = false, features = ["connect", "rustls-tls-webpki-roots"] }
-tokio-util = { version = "0.7", features = ["codec"] }
-futures-util = "0.3"
-url = "2"
+# Async runtime. Tauri v2 pulls tokio transitively; we surface the pieces
+# the VAD worker + voice-session scaffold need directly.
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }
 
-# Error + logging.
-thiserror = "1"
+# Logging.
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
-# Misc. `chrono` gives us local-day boundary for the SSE `since` parameter;
-# `urlencoding` encodes that ISO string for the query; `rand` seeds the SSE
-# reconnect jitter.
-chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
-urlencoding = "2"
-rand = "0.8"
-
 # VAD. `ort` 2.x is API-stable enough for production; pinned to rc to
-# guard against API churn. `std` pulls the filesystem load path we need
+# guard against API churn. `std` pulls the filesystem load path needed
 # for `commit_from_file`.
 ort = { version = "=2.0.0-rc.10", default-features = false, features = ["std"] }
+
+# IPC type generation. `tauri-specta` emits a TS file containing commands,
+# events, and derived types in one pass; `specta` is the underlying reflection
+# crate (attach `#[derive(specta::Type)]` to Rust structs to expose them).
+specta = { version = "=2.0.0-rc.24", features = ["serde_json"] }
+specta-typescript = "=0.0.11"
+tauri-specta = { version = "=2.0.0-rc.24", features = ["derive", "typescript"] }
+
+# `gen_bindings` is a binary target — it runs once per `yarn gen-bindings`
+# invocation to regenerate src/ipc/bindings.ts. It's not part of the app.
+[[bin]]
+name = "gen-bindings"
+path = "src/bin/gen_bindings.rs"
 
 [profile.release]
 panic = "abort"

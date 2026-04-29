@@ -13,6 +13,7 @@
     "typecheck": "vue-tsc --noEmit",
     "test": "vitest run",
     "tauri": "tauri",
+    "gen-bindings": "cd src-tauri && cargo run --bin gen-bindings --quiet",
     "prepare": "simple-git-hooks"
   },
   "//": "`pnpm dev` is the Vite server the Tauri desktop shell loads from in debug builds; Buddy itself is never opened as a standalone browser tab — see buddy/CLAUDE.md.",
@@ -30,7 +31,6 @@
     "@tresjs/core": "^5.8.0",
     "@vueuse/core": "^14.2.1",
     "es-toolkit": "^1.43.0",
-    "localforage": "^1.10.0",
     "pinia": "^3.0.4",
     "three": "^0.183.2",
     "vue": "^3.5.32",

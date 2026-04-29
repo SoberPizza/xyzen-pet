@@ -1,41 +1,21 @@
-//! Shared app state registered with `app.manage()`. Every handle lives behind
-//! Arc so commands can cheaply hand off to spawned tasks.
+//! Shared app state registered with `app.manage()`.
+//!
+//! Today this holds only the VAD worker handle; other Rust-owned resources
+//! (settings store, voice session registry) are registered directly by
+//! their owning modules via `.manage()` calls in `lib.rs`.
 
 use std::sync::Arc;
 
-use crate::auth::AuthState;
-use crate::net::http::HttpClient;
-use crate::net::sse::SseClient;
-use crate::net::voice_ws::VoiceWsClient;
 use crate::vad::worker::VadWorker;
 
-#[allow(dead_code)]
 pub struct AppState {
-    pub auth: Arc<AuthState>,
-    pub http: Arc<HttpClient>,
-    pub sse: Arc<SseClient>,
-    pub voice_ws: Arc<VoiceWsClient>,
     pub vad: Arc<VadWorker>,
 }
 
 impl AppState {
     pub fn new() -> Self {
-        let auth = Arc::new(AuthState::new());
-        // Panics here are a boot-time config error — there's no graceful path
-        // that lets the webview carry on meaningfully without HTTP.
-        let http = Arc::new(
-            HttpClient::new(auth.clone())
-                .expect("HttpClient::new should not fail at boot"),
-        );
-        let sse = Arc::new(SseClient::new(auth.clone()));
-        let voice_ws = Arc::new(VoiceWsClient::new(auth.clone()));
-        let vad = Arc::new(VadWorker::new());
         Self {
-            auth,
-            http,
-            sse,
-            voice_ws,
-            vad,
+            vad: Arc::new(VadWorker::new()),
         }
     }
 }

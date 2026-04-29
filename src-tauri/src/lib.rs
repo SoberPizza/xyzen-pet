@@ -4,15 +4,16 @@ use tauri::{
 };
 use tracing_subscriber::EnvFilter;
 
-mod auth;
-mod error;
+mod buddy_stub;
 mod events;
-mod ipc;
-mod net;
+pub mod ipc;
+mod settings;
 mod state;
 mod vad;
+mod voice;
 
 use state::AppState;
+use voice::VoiceSessions;
 
 const MIN_W: f64 = 180.0;
 const MIN_H: f64 = 240.0;
@@ -87,10 +88,9 @@ async fn close_buddy_settings_window(app: tauri::AppHandle) -> Result<(), String
 }
 
 fn init_tracing() {
-    // Respect RUST_LOG if set; otherwise give each Rust-side module its own
-    // bucket so noisy subsystems can be quieted without touching the rest.
+    // Respect RUST_LOG if set; otherwise surface Buddy-side logs at info.
     let filter = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| EnvFilter::new("buddy_lib=info,reqwest=warn,tokio_tungstenite=warn"));
+        .unwrap_or_else(|_| EnvFilter::new("buddy_lib=info"));
     let _ = tracing_subscriber::fmt()
         .with_env_filter(filter)
         .with_target(true)
@@ -102,7 +102,9 @@ pub fn run() {
     init_tracing();
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_store::Builder::new().build())
         .manage(AppState::new())
+        .manage(VoiceSessions::new())
         .setup(|app| {
             if let Some(win) = app.get_webview_window("main") {
                 if let Ok(Some(monitor)) = win.current_monitor() {
@@ -126,23 +128,23 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            // Window controls
             resize_buddy_window,
             open_buddy_settings_window,
             close_buddy_settings_window,
-            ipc::auth_cmd::get_auth_credentials,
-            ipc::auth_cmd::set_auth_credentials,
-            ipc::http_cmd::xyzen_http_request,
-            ipc::sse_cmd::xyzen_sse_connect,
-            ipc::sse_cmd::xyzen_sse_disconnect,
-            ipc::sse_cmd::xyzen_sse_status,
-            ipc::voice_cmd::xyzen_voice_ws_open,
-            ipc::voice_cmd::xyzen_voice_ws_close,
-            ipc::voice_cmd::xyzen_voice_ws_start_session,
-            ipc::voice_cmd::xyzen_voice_ws_input_start,
-            ipc::voice_cmd::xyzen_voice_ws_input_commit,
-            ipc::voice_cmd::xyzen_voice_ws_interrupt,
-            ipc::voice_cmd::xyzen_voice_ws_stop_session,
-            ipc::voice_cmd::xyzen_voice_ws_send_frame,
+            // IPC surface reflected into src/ipc/bindings.ts via specta.
+            ipc::app_info,
+            settings::settings_get,
+            settings::settings_set,
+            settings::settings_delete,
+            settings::settings_all,
+            voice::session::voice_start,
+            voice::session::voice_stop,
+            voice::session::voice_push_frame,
+            buddy_stub::buddy_get_active,
+            buddy_stub::buddy_list,
+            // VAD (Silero-on-ort) — Rust-only concern; stays as a command
+            // surface so the webview can hand over mic frames if needed.
             ipc::vad_cmd::vad_start,
             ipc::vad_cmd::vad_stop,
             ipc::vad_cmd::vad_push_frame,

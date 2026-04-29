@@ -1,56 +1,31 @@
 <script setup lang="ts">
-import type { EmotionPayload } from './stores/constants/emotions'
-
 import { storeToRefs } from 'pinia'
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import { useLocalStorage } from '@vueuse/core'
 
 import { useAudioContext } from './stores/audio'
-import { useBuddyStore } from './stores/buddy'
-import { useCeoChatStore } from './stores/ceo-chat'
-import { EMOTION_VRMExpressionName_value } from './stores/constants/emotions'
 import { useGeneralStore } from './stores/general'
-import { useSettingsStageModel } from './stores/settings'
 import { useBuddyVoiceSession } from './composables/useBuddyVoiceSession'
-import { useXyzenBridge } from './composables/useXyzenBridge'
 import SettingsStandalone from './components/SettingsStandalone.vue'
+import defaultVrmUrl from './three/assets/vrm/models/buddy_egg/buddy_egg.vrm?url'
+import { driver as defaultAnimationDriver } from './three/assets/vrm/models/buddy_egg/animation-driver'
 import { animations } from './three/assets/vrm'
 import ThreeScene from './three/components/ThreeScene.vue'
-import type { GestureRegistry } from './three/composables/vrm/gesture-driver'
 import { DEFAULT_GESTURE_ACTIONS, useVRMGestureDriver } from './three/composables/vrm/gesture-driver'
 import { useModelStore } from './three/stores/model-store'
 import { invoke } from '@tauri-apps/api/core'
+import { commands } from './ipc/bindings'
 
-const stageModelStore = useSettingsStageModel()
-const buddyStore = useBuddyStore()
-const ceoChatStore = useCeoChatStore()
 const audioContextStore = useAudioContext()
 const generalStore = useGeneralStore()
 
-const {
-  stageModelRenderer,
-  stageViewControlsEnabled,
-  stageModelSelectedUrl,
-  stageModelSelectedModel,
-  activeAnimationDriver,
-} = storeToRefs(stageModelStore)
-
-const activeDisplayConfig = computed(() => stageModelSelectedModel.value?.displayConfig)
-
-watch(
-  [stageModelRenderer, stageModelSelectedUrl],
-  ([renderer, url], [prevRenderer, prevUrl]) => {
-    console.info('[buddy:vrm] App.vue binding watcher', {
-      renderer,
-      prevRenderer,
-      url,
-      prevUrl,
-      rendererChanged: renderer !== prevRenderer,
-      urlChanged: url !== prevUrl,
-    })
-  },
-  { immediate: true },
-)
+// Default VRM + animation driver. The remote-buddy-selector flow is gone
+// along with the old backend; a future `buddy_get_active` command will
+// replace this hardcoded pick once the new API supplies multiple models.
+const stageModelSelectedUrl = ref<string>(defaultVrmUrl)
+const stageModelRenderer = ref<'vrm' | 'disabled'>('vrm')
+const stageViewControlsEnabled = ref(false)
+const activeDisplayConfig = computed(() => undefined)
 
 const { brightness } = storeToRefs(generalStore)
 const buddyRootStyle = computed(() => ({ filter: `brightness(${brightness.value})` }))
@@ -225,37 +200,18 @@ function onSettingsClick() {
 const vrmViewerRef = ref<InstanceType<typeof ThreeScene>>()
 const currentAudioSource = shallowRef<AudioNode>()
 
-// --- Emotion routing: serialize expression updates so they play back-to-back. ---
-let emotionTask: Promise<unknown> = Promise.resolve()
-function enqueueEmotion(payload: EmotionPayload) {
-  emotionTask = emotionTask
-    .then(async () => {
-      if (stageModelRenderer.value !== 'vrm') return
-      const value = EMOTION_VRMExpressionName_value[payload.name]
-      if (!value) return
-      await vrmViewerRef.value?.setExpression(value, payload.intensity)
-    })
-    .catch(err => console.warn('[buddy] emotion handler failed', err))
-}
-
 // --- Audio context ---
 const { audioContext } = audioContextStore
 
-// --- Xyzen backend bridge: WS events → VRM pipeline ---
-useXyzenBridge({
-  audioContext,
-  currentAudioSource,
-  onEmotion: enqueueEmotion,
-})
-
-// --- Gesture driver: backend `gesture_trigger` → VRM actions. ---
+// --- Gesture driver: IPC `avatar://gesture` events → VRM actions. ---
 //
-// The registry getter re-runs per dispatch; when the active model's
-// `animationDriver` changes (switching VRMs), the merged registry gets a
-// new identity and the gesture-driver flushes its cooldown map so the
-// first gesture on the new model isn't silently blocked.
-let lastMergedDriver: typeof activeAnimationDriver.value = undefined
-let mergedRegistry: GestureRegistry = DEFAULT_GESTURE_ACTIONS
+// The registry bakes the default action map with the bundled buddy_egg
+// driver's overrides. When the new buddy-info API lands we'll switch back
+// to a per-active-buddy registry, but today there's only one model.
+const mergedRegistry = {
+  ...DEFAULT_GESTURE_ACTIONS,
+  ...(defaultAnimationDriver.gestures ?? {}),
+}
 useVRMGestureDriver({
   target: () => {
     if (stageModelRenderer.value !== 'vrm') return undefined
@@ -267,34 +223,23 @@ useVRMGestureDriver({
       pulseMorph: (name, peak, ms) => viewer.pulseMorph(name, peak, ms),
     }
   },
-  registry: () => {
-    const driver = activeAnimationDriver.value
-    if (driver !== lastMergedDriver) {
-      lastMergedDriver = driver
-      mergedRegistry = driver?.gestures
-        ? { ...DEFAULT_GESTURE_ACTIONS, ...driver.gestures }
-        : DEFAULT_GESTURE_ACTIONS
-    }
-    return mergedRegistry
-  },
+  registry: mergedRegistry,
 })
 
-// --- Voice session: mic + VAD + voice WS. ---
-const voiceSession = useBuddyVoiceSession({ audioContext, currentAudioSource })
+// --- Voice session: driven by the Rust FSM via IPC. ---
+const voiceSession = useBuddyVoiceSession()
 
-const micFabState = computed<'on' | 'off' | 'paused' | 'connecting' | 'error'>(() => {
-  if (voiceSession.uiState.value === 'error') return 'error'
-  if (voiceSession.uiState.value === 'connecting') return 'connecting'
-  if (voiceSession.isPaused.value) return 'paused'
-  if (voiceSession.uiState.value === 'off') return 'off'
+const micFabState = computed<'on' | 'off' | 'connecting' | 'error'>(() => {
+  if (voiceSession.state.value === 'error') return 'error'
+  if (voiceSession.state.value === 'connecting') return 'connecting'
+  if (voiceSession.state.value === 'off') return 'off'
   return 'on'
 })
 const micFabTitle = computed(() => {
   switch (micFabState.value) {
     case 'on': return 'Voice on — click to mute'
-    case 'paused': return 'Paused (web voice active) — click to take over'
     case 'connecting': return 'Connecting voice…'
-    case 'error': return voiceSession.errorMessage.value ?? 'Voice error — click to retry'
+    case 'error': return voiceSession.error.value ?? 'Voice error — click to retry'
     case 'off':
     default: return 'Voice off — click to enable'
   }
@@ -338,20 +283,12 @@ onMounted(async () => {
     h: windowSize.value.h,
   })
 
-  buddyStore.initialize().catch(err => console.warn('[buddy] buddy init failed', err))
-  ceoChatStore
-    .initialize()
-    .then(() => {
-      console.info('[buddy:voice:app] auto-starting voice session on mount')
-      return voiceSession.start()
-    })
-    .catch(err => console.warn('[buddy] ceo-chat init failed', err))
+  // Ping the Rust buddy stub so the VRM selector layer has something to
+  // consume once the new API arrives; the return value isn't used today.
+  commands.buddyGetActive().catch(() => {})
 
-  try {
-    await stageModelStore.initializeStageModel()
-  } catch (err) {
-    console.error('[Buddy] Failed to initialize stage model:', err)
-  }
+  console.info('[buddy:voice:app] auto-starting voice session on mount')
+  await voiceSession.start().catch(err => console.warn('[buddy] voice session start failed', err))
 })
 
 onBeforeUnmount(() => {
@@ -486,10 +423,8 @@ onBeforeUnmount(() => {
               y2="22"
             />
           </svg>
-          <span
-            v-if="micFabState === 'paused'"
-            class="mic-fab__badge"
-          />
+          <!-- Pause badge reserved for a future cross-surface
+               exclusivity signal; the old backend event source is gone. -->
         </button>
         <button
           class="fab"

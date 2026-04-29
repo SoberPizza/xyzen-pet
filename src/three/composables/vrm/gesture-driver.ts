@@ -1,39 +1,36 @@
 /**
- * Gesture driver — turns backend `gesture_trigger` events into VRM actions.
+ * Gesture driver — turns `avatar://gesture` Tauri events into VRM actions.
  *
- * The backend emits discrete gestures (see `BuddyGesture` in
- * `service/app/schemas/buddy_event_types.py`) and leaves all playback
- * policy to us. This module owns:
+ * The Rust side emits discrete gestures (currently a stub — no emitter is
+ * wired until the new remote API rebuild) and leaves all playback policy
+ * to us. This module owns:
  *
  *  - A **declarative registry** mapping each gesture name to a list of
  *    primitive `GestureAction`s composed from VRM capabilities the model
  *    already exposes (expression presets, look-at pulses, arbitrary
  *    blendshape pulses, and — reserved — VRMA clip playback).
- *  - A **dispatcher** that subscribes to `XyzenGestureTrigger` on the
- *    xyzen event bus and executes the registered actions, with a simple
- *    per-gesture cooldown so streaming chunks containing repeated
- *    keywords don't machine-gun the avatar.
+ *  - A **dispatcher** that subscribes to the `avatar://gesture` IPC
+ *    event and executes the registered actions, with a per-gesture
+ *    cooldown so streaming chunks with repeated keywords don't
+ *    machine-gun the avatar.
  *
  * Adding a gesture is one entry in `DEFAULT_GESTURE_ACTIONS`. Unknown
- * gesture names are logged in dev and dropped (forward-compat: the
- * backend may introduce new names ahead of a buddy release).
+ * gesture names are logged in dev and dropped.
  *
- * Frontend owns:
- *  - dedup / cooldown policy
- *  - overlap handling (actions layer on top of blink/lipsync because
- *    `pulseMorph` is applied after the default per-frame updaters, see
- *    `VRMModel.vue`'s `applyMorphPulses`)
- *  - mapping between canonical gesture names and concrete VRM controls
- *
- * Backend owns:
- *  - *when* to fire a gesture (keyword / tool / activity context)
- *  - the gesture vocabulary
+ * Frontend owns dedup/cooldown/overlap handling and the mapping between
+ * canonical gesture names and concrete VRM controls; Rust owns *when* to
+ * fire + the gesture vocabulary.
  */
 
 import { onBeforeUnmount } from 'vue'
 
-import { xyzenBus } from '../../../services/event-bus'
-import { XyzenGestureTrigger } from '../../../services/types'
+import { useIpcEvent } from '../../../ipc/client'
+
+interface GestureTriggerPayload {
+  gesture: string
+  intensity?: number
+  timestamp_ms?: number
+}
 
 export interface GestureTarget {
   /** Named emotion preset from `useVRMEmote` (happy/angry/sad/…). */
@@ -273,7 +270,7 @@ export function useVRMGestureDriver(options: UseVRMGestureDriverOptions) {
     return true
   }
 
-  const off = xyzenBus.on(XyzenGestureTrigger, (payload) => {
+  useIpcEvent<GestureTriggerPayload>('avatar://gesture', (payload) => {
     const gesture = String(payload.gesture ?? '')
     if (!gesture) return
     // `timestamp_ms` is authoritative when present — lets us reconcile
@@ -284,9 +281,9 @@ export function useVRMGestureDriver(options: UseVRMGestureDriverOptions) {
     dispatch(gesture, Number(payload.intensity ?? 1), at)
   })
 
-  onBeforeUnmount(() => {
-    off()
-  })
+  // `useIpcEvent` handles teardown on scope dispose; `onBeforeUnmount` kept
+  // as an explicit nudge so future additions see the pattern.
+  onBeforeUnmount(() => {})
 
   return {
     dispatch,

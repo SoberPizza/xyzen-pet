@@ -17,7 +17,7 @@
 
 import { computed, ref } from 'vue'
 
-import BuddiesPanel from './SettingsPanel/BuddiesPanel.vue'
+import BuddiesPanel from './SettingsPanel/Buddies/BuddiesPanel.vue'
 import ConnectionPanel from './SettingsPanel/ConnectionPanel.vue'
 import GeneralPanel from './SettingsPanel/GeneralPanel.vue'
 import VisionPanel from './SettingsPanel/VisionPanel.vue'
@@ -37,6 +37,8 @@ function onOverlayClick(e: MouseEvent) {
   if (e.target === e.currentTarget) closeDialog()
 }
 
+// Buddies and Connection panels are restored as UI shells — their internal
+// wiring is no-op'd until the new backend API lands.
 type SettingsSection = 'buddies' | 'general' | 'vision' | 'voice' | 'connection'
 const activeSection = ref<SettingsSection>('buddies')
 

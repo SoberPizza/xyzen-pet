@@ -2,66 +2,65 @@
 /*
  * ConnectionPanel — "Connection" tab of SettingsDialog.
  *
- * Read-only status surface for the Xyzen backend session. The active
- * CredentialProvider (Tauri sibling bridge today) supplies baseUrl + token;
- * this panel displays them and lets the user ping the backend to verify
- * reachability and token validity.
- *
- * Credentials are loaded lazily on mount — the panel only mounts when the
- * Connection tab is active, so the import cost of `initXyzen` is paid only
- * when the user visits this tab.
+ * Read-only status surface. The old remote-API wiring (Xyzen sibling
+ * bridge + HTTP probe) has been stripped — today the panel only shows
+ * the packaged app version (via the `app_info` IPC command) and
+ * placeholders where the backend URL / auth token will land once the
+ * new remote API is wired up.
  */
 
 import { onMounted, ref } from 'vue'
 
-import { initXyzen } from '../../services'
-import { HttpError } from '../../services/http'
+import { commands } from '../../ipc/bindings'
 
-const backendUrlInput = ref('')
-const tokenInput = ref('')
+const version = ref('…')
 const testing = ref(false)
 const testResult = ref<{ ok: boolean, message: string } | null>(null)
 
 onMounted(async () => {
   try {
-    const { config } = await initXyzen()
-    backendUrlInput.value = config.baseUrl
-    tokenInput.value = config.token
+    const info = await commands.appInfo()
+    version.value = info.version
   } catch (err) {
-    console.warn('[buddy] failed to load xyzen config', err)
+    console.warn('[buddy] failed to read app info', err)
+    version.value = '—'
   }
 })
 
-async function testConnection() {
+function testConnection() {
+  // Wire-up target for the rebuilt API. Kept interactive so the UI flow
+  // can be tested independently; flip to `await commands.pingBackend()`
+  // (or equivalent) once that command exists.
   testing.value = true
   testResult.value = null
-  try {
-    const { http } = await initXyzen()
-    await http.get('/root-agent/')
-    testResult.value = { ok: true, message: 'Connected — backend reachable and token accepted.' }
-  } catch (err) {
-    const msg = err instanceof HttpError
-      ? `${err.status}: ${err.message}`
-      : err instanceof Error
-        ? err.message
-        : 'Unknown error'
-    testResult.value = { ok: false, message: msg }
-  } finally {
+  setTimeout(() => {
     testing.value = false
-  }
+    testResult.value = {
+      ok: false,
+      message: 'Not wired yet — pending the new remote API.',
+    }
+  }, 250)
 }
 </script>
 
 <template>
   <div>
     <p class="hint">
-      Connected via the Xyzen desktop app. The main window owns the access token; Buddy rotates automatically when you log in or out of Xyzen.
+      The remote API is being rebuilt. Once it's online, Buddy will show the backend URL and rotate the access token automatically when you log in or out of the host app.
     </p>
+    <label class="field-label">App version</label>
+    <div class="field-row">
+      <input
+        class="field-input"
+        :value="version"
+        readonly
+      >
+    </div>
     <label class="field-label">Backend URL</label>
     <div class="field-row">
       <input
         class="field-input"
-        :value="backendUrlInput || '—'"
+        value="<not configured>"
         readonly
       >
     </div>
@@ -69,7 +68,7 @@ async function testConnection() {
     <div class="field-row">
       <input
         class="field-input"
-        :value="tokenInput ? `${tokenInput.slice(0, 16)}…` : '—'"
+        value="<not configured>"
         readonly
       >
     </div>

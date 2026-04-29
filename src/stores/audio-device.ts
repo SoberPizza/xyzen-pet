@@ -1,21 +1,20 @@
 /**
  * Pinia store for microphone / speaker device selection.
  *
- * Used by `useVoiceMic` to pick an explicit `deviceId` in the
- * `getUserMedia` constraints, and by the Settings UI to list devices.
- * Both input and output devices are tracked, but buddy only needs the
- * input selection for voice capture; output selection is reserved for
- * future use (the current playback path goes through the default
- * AudioContext destination).
+ * Device ids persist in the Rust settings store so the user's mic choice
+ * survives restarts and syncs between windows. Enumeration itself stays
+ * browser-side — only `navigator.mediaDevices` knows the current device
+ * list.
  */
 
-import { useLocalStorage } from '@vueuse/core'
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 
+import { useIpcSetting } from '../ipc/client'
+
 export const useSettingsAudioDevice = defineStore('settings-audio-devices', () => {
-  const selectedInputDeviceId = useLocalStorage<string>('settings/audio/input-device-id', '')
-  const selectedOutputDeviceId = useLocalStorage<string>('settings/audio/output-device-id', '')
+  const selectedInputDeviceId = useIpcSetting<string>('settings/audio/input-device-id', '')
+  const selectedOutputDeviceId = useIpcSetting<string>('settings/audio/output-device-id', '')
 
   const audioInputs = ref<MediaDeviceInfo[]>([])
   const audioOutputs = ref<MediaDeviceInfo[]>([])

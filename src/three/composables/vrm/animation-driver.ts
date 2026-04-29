@@ -1,24 +1,22 @@
-import type { BuddyStage } from '../../../services/buddies'
 import type { GestureDescriptor } from './gesture-driver'
 
 /**
  * Per-model animation driver.
  *
- * Paired with a VRM asset so authoring + licensing + motion move together
- * under `src/three/assets/vrm/models/<ModelId>/animation-driver.ts`. The
- * `display-models` store picks the driver up at registration time and
- * exposes it on the active model; `App.vue` feeds its gesture map into
- * `useVRMGestureDriver` merged *over* `DEFAULT_GESTURE_ACTIONS`, so a
- * driver only has to declare the gestures it wants to customize for that
- * model's rig/blendshapes/temperament.
+ * Paired with a VRM asset under
+ * `src/three/assets/vrm/models/<ModelId>/animation-driver.ts`. App.vue
+ * merges the driver's gestures over `DEFAULT_GESTURE_ACTIONS`, so a driver
+ * only declares the gestures it wants to customize for that model's rig.
  *
- * Unspecified gestures fall through to the default registry.
+ * `raceCode` + `stage` are kept as free-form strings; the old backend
+ * enum was coupled to the Xyzen API and is gone. Future selection logic
+ * will land alongside the rebuilt `buddy_get_active` command.
  */
 export interface AnimationDriver {
-  /** Race code the driver is paired with (matches `race.code` in the backend). */
+  /** Race/species tag, e.g. `"egg"`, `"jiuwei"`. */
   raceCode: string
-  /** Growth stage the driver is paired with. */
-  stage: BuddyStage
-  /** Gesture overrides. Keys are `BuddyGesture` values from the backend. */
+  /** Growth stage tag, e.g. `"egg"`, `"adult"`. */
+  stage: string
+  /** Gesture overrides. Keys match the names in `DEFAULT_GESTURE_ACTIONS`. */
   gestures?: Readonly<Record<string, GestureDescriptor>>
 }

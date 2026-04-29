@@ -9,7 +9,7 @@
  */
 
 import { readonly, ref, shallowRef } from 'vue'
-import workletUrl from '../audio/pcm16-capture-worklet.js?worker&url'
+import workletUrl from '../audio/pcm16-capture-worklet.ts?worker&url'
 import { useSettingsAudioDevice } from '../stores/audio-device'
 
 export interface VoiceMicFrame {
