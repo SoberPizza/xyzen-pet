@@ -5,12 +5,14 @@ use std::path::PathBuf;
 
 use tauri::{AppHandle, Emitter, Manager, State};
 use tokio::sync::mpsc;
+use tracing::instrument;
 
 use crate::events::{VAD_SPEECH_END, VAD_SPEECH_START};
 use crate::state::AppState;
 use crate::vad::worker::VadSignal;
 
 #[tauri::command]
+#[instrument(skip(app, state), err(Debug))]
 pub async fn vad_start(
     app: AppHandle,
     state: State<'_, AppState>,
@@ -61,12 +63,14 @@ pub async fn vad_start(
 }
 
 #[tauri::command]
+#[instrument(skip(state), err(Debug))]
 pub async fn vad_stop(state: State<'_, AppState>) -> Result<(), String> {
     state.vad.stop().await;
     Ok(())
 }
 
 #[tauri::command]
+#[instrument(level = "trace", skip(state, pcm16))]
 pub async fn vad_push_frame(
     state: State<'_, AppState>,
     pcm16: Vec<u8>,

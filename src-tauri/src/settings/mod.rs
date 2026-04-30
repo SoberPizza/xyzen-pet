@@ -39,6 +39,7 @@ where
 
 #[tauri::command]
 #[specta::specta]
+#[tracing::instrument(skip(app), err(Debug))]
 pub fn settings_get<R: Runtime>(
     app: AppHandle<R>,
     key: String,
@@ -51,6 +52,7 @@ pub fn settings_get<R: Runtime>(
 
 #[tauri::command]
 #[specta::specta]
+#[tracing::instrument(skip(app, value_json), err(Debug))]
 pub fn settings_set<R: Runtime>(
     app: AppHandle<R>,
     key: String,
@@ -73,6 +75,7 @@ pub fn settings_set<R: Runtime>(
 
 #[tauri::command]
 #[specta::specta]
+#[tracing::instrument(skip(app), err(Debug))]
 pub fn settings_delete<R: Runtime>(
     app: AppHandle<R>,
     key: String,
@@ -92,6 +95,7 @@ pub fn settings_delete<R: Runtime>(
 
 #[tauri::command]
 #[specta::specta]
+#[tracing::instrument(skip(app), err(Debug))]
 pub fn settings_all<R: Runtime>(
     app: AppHandle<R>,
 ) -> Result<HashMap<String, String>, String> {

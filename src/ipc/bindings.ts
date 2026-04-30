@@ -45,6 +45,20 @@ export const commands = {
 	 */
 	buddyRename: (buddyId: string, name: string) => typedError<CachedBuddyEnvelope, BuddyError>(__TAURI_INVOKE("buddy_rename", { buddyId, name })),
 	buddyActivate: (buddyId: string) => typedError<CachedBuddyEnvelope, BuddyError>(__TAURI_INVOKE("buddy_activate", { buddyId })),
+	/**
+	 *  First-time onboarding: `POST /xyzen/api/v1/buddy`. The server
+	 *  enforces "one active buddy per user" and returns 409 if the caller
+	 *  already has one — Vue resolves that by calling `buddy_sync` to pick
+	 *  up the remote state.
+	 */
+	buddyCreate: (name: string, raceCode: string, attribute: BuddyAttribute, gender: BuddyGender, genericTraitCodes: string[]) => typedError<CachedBuddyEnvelope, BuddyError>(__TAURI_INVOKE("buddy_create", { name, raceCode, attribute, gender, genericTraitCodes })),
+	/**
+	 *  "Break Bond" — permanent delete of a buddy on the server plus a wipe
+	 *  of every local trace (cache envelope + any per-buddy nickname slot).
+	 *  Safe to call when the server already 404s the id — we still clear the
+	 *  local state so the UI can't end up stuck pointing at a ghost row.
+	 */
+	buddyDelete: (buddyId: string) => typedError<null, BuddyError>(__TAURI_INVOKE("buddy_delete", { buddyId })),
 	authStatus: () => __TAURI_INVOKE<AuthStatus>("auth_status"),
 	authStart: () => typedError<AuthStartResponse, string>(__TAURI_INVOKE("auth_start")),
 	authCancel: () => typedError<null, string>(__TAURI_INVOKE("auth_cancel")),

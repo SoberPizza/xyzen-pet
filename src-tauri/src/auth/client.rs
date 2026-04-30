@@ -6,6 +6,7 @@
 
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
+use tracing::{debug, warn};
 
 /// RFC 8628 grant identifier — kept literal to match the server router at
 /// `service/buddy/auth_api.py:23`.
@@ -83,17 +84,25 @@ impl AuthClient {
         client_id: &str,
         scope: &str,
     ) -> Result<AuthorizeResponse, String> {
+        let url = self.url("/authorize");
+        debug!(method = "POST", %url, "http start");
         let resp = self
             .http
-            .post(self.url("/authorize"))
+            .post(&url)
             .form(&[("client_id", client_id), ("scope", scope)])
             .send()
             .await
-            .map_err(|e| format!("network: {e}"))?;
+            .map_err(|e| {
+                warn!(err = %e, "transport error");
+                format!("network: {e}")
+            })?;
+        debug!(status = %resp.status(), "http resp");
 
         if !resp.status().is_success() {
             let status = resp.status();
             let body = resp.text().await.unwrap_or_default();
+            let snippet: String = body.chars().take(512).collect();
+            warn!(status = %status, body = %snippet, "http error");
             return Err(format!("authorize failed ({status}): {body}"));
         }
 
@@ -105,17 +114,23 @@ impl AuthClient {
     /// Polls `/buddy/token` once. Returns `Success` on 200, `OAuthError` on
     /// the RFC 8628 error envelope, and `Transport` otherwise.
     pub async fn poll_token(&self, buddy_code: &str) -> PollOutcome {
+        let url = self.url("/token");
+        debug!(method = "POST", %url, "http start");
         let req = self
             .http
-            .post(self.url("/token"))
+            .post(&url)
             .form(&[("grant_type", DEVICE_CODE_GRANT), ("buddy_code", buddy_code)])
             .send()
             .await;
 
         let resp = match req {
             Ok(r) => r,
-            Err(e) => return PollOutcome::Transport(format!("network: {e}")),
+            Err(e) => {
+                warn!(err = %e, "transport error");
+                return PollOutcome::Transport(format!("network: {e}"));
+            }
         };
+        debug!(status = %resp.status(), "http resp");
 
         if resp.status().is_success() {
             return match resp.json::<TokenResponse>().await {

@@ -12,7 +12,6 @@
 //! kicked off in [`crate::auth::session`].
 
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 use specta::Type;
 use tauri::{AppHandle, Emitter, Runtime};
 use tauri_plugin_store::StoreExt;
@@ -53,11 +52,7 @@ fn store_error(e: impl std::fmt::Display) -> BuddyError {
 pub fn read<R: Runtime>(app: &AppHandle<R>) -> Option<CachedBuddyEnvelope> {
     let store = app.store(STORE_FILENAME).ok()?;
     let raw = store.get(KEY_BUDDY_CACHE)?;
-    let encoded = match raw {
-        Value::String(s) if !s.is_empty() => s,
-        _ => return None,
-    };
-    serde_json::from_str::<CachedBuddyEnvelope>(&encoded).ok()
+    serde_json::from_value::<CachedBuddyEnvelope>(raw).ok()
 }
 
 /// Stamps `synced_at_ms = now`, writes the wrapper into the store, and
@@ -72,14 +67,13 @@ pub fn write<R: Runtime>(
         envelope: envelope.clone(),
         synced_at_ms: now_ms(),
     };
-    let encoded = serde_json::to_string(&wrapped).map_err(store_error)?;
+    let value = serde_json::to_value(&wrapped).map_err(store_error)?;
     let store = app.store(STORE_FILENAME).map_err(store_error)?;
-    let value = Value::String(encoded.clone());
     store.set(KEY_BUDDY_CACHE.to_string(), value.clone());
 
-    // Same shape as `settings_set`: the `value_json` field is the JSON
-    // representation of the stored Value, which for us is a quoted
-    // string — matches what `useIpcSetting` expects to JSON.parse.
+    // Mirror `settings_set`: `value_json` is a single-level JSON encoding of
+    // the stored `Value`, so the Vue-side `useIpcSetting` gets an object back
+    // from its single `JSON.parse`.
     let _ = app.emit(
         SETTINGS_CHANGED_EVENT,
         SettingsChanged {

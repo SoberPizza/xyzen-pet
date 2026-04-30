@@ -1,8 +1,12 @@
+use std::sync::OnceLock;
+
 use tauri::{
     LogicalPosition, LogicalSize, Manager, PhysicalPosition, PhysicalSize,
     WebviewUrl, WebviewWindowBuilder,
 };
-use tracing_subscriber::EnvFilter;
+use tracing_appender::non_blocking::{NonBlocking, WorkerGuard};
+use tracing_appender::rolling::{RollingFileAppender, Rotation};
+use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
 // Modules are `pub` so the integration-test crate under `tests/` can
 // exercise their public surface (VadFsm, AuthClient, SettingsChanged, …).
@@ -31,6 +35,7 @@ fn clamp(w: f64, h: f64) -> (f64, f64) {
 }
 
 #[tauri::command]
+#[tracing::instrument(skip(app), err(Debug))]
 async fn resize_buddy_window(app: tauri::AppHandle, w: f64, h: f64) -> Result<(), String> {
     let window = app
         .get_webview_window("main")
@@ -60,6 +65,7 @@ async fn resize_buddy_window(app: tauri::AppHandle, w: f64, h: f64) -> Result<()
 }
 
 #[tauri::command]
+#[tracing::instrument(skip(app), err(Debug))]
 async fn open_buddy_settings_window(app: tauri::AppHandle) -> Result<(), String> {
     if let Some(existing) = app.get_webview_window("settings") {
         let _ = existing.show();
@@ -85,6 +91,7 @@ async fn open_buddy_settings_window(app: tauri::AppHandle) -> Result<(), String>
 }
 
 #[tauri::command]
+#[tracing::instrument(skip(app), err(Debug))]
 async fn close_buddy_settings_window(app: tauri::AppHandle) -> Result<(), String> {
     if let Some(w) = app.get_webview_window("settings") {
         w.close().map_err(|e| e.to_string())?;
@@ -92,26 +99,73 @@ async fn close_buddy_settings_window(app: tauri::AppHandle) -> Result<(), String
     Ok(())
 }
 
-fn init_tracing() {
+// Kept alive for the process lifetime so buffered log writes flush on exit.
+// Dropping the guard truncates any in-flight lines.
+static LOG_GUARD: OnceLock<WorkerGuard> = OnceLock::new();
+
+fn init_tracing<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
     // Respect RUST_LOG if set; otherwise surface Buddy-side logs at info.
     let filter = EnvFilter::try_from_default_env()
         .unwrap_or_else(|_| EnvFilter::new("buddy_lib=info"));
-    let _ = tracing_subscriber::fmt()
-        .with_env_filter(filter)
+
+    let stderr_layer = fmt::layer()
         .with_target(true)
+        .with_writer(std::io::stderr);
+
+    // Best-effort file layer: a failure here (no log dir, permissions,
+    // builder error) disables file logging but must never panic the app.
+    let file_layer = match build_file_writer(app) {
+        Ok(writer) => Some(
+            fmt::layer()
+                .with_target(true)
+                .with_ansi(false)
+                .with_writer(writer),
+        ),
+        Err(e) => {
+            eprintln!("buddy: file logging disabled: {e}");
+            None
+        }
+    };
+
+    let _ = tracing_subscriber::registry()
+        .with(filter)
+        .with(stderr_layer)
+        .with(file_layer)
         .try_init();
+}
+
+fn build_file_writer<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+) -> Result<NonBlocking, String> {
+    let dir = app
+        .path()
+        .app_log_dir()
+        .map_err(|e| format!("app_log_dir: {e}"))?;
+    std::fs::create_dir_all(&dir).map_err(|e| format!("create log dir {dir:?}: {e}"))?;
+    let appender = RollingFileAppender::builder()
+        .rotation(Rotation::DAILY)
+        .filename_prefix("buddy")
+        .filename_suffix("log")
+        .max_log_files(7)
+        .build(&dir)
+        .map_err(|e| format!("rolling appender: {e}"))?;
+    let (writer, guard) = tracing_appender::non_blocking(appender);
+    // Ignore the error path — set_once can only fail if called twice,
+    // which would mean init_tracing ran twice. try_init above is a no-op
+    // the second time so losing a guard there is harmless.
+    let _ = LOG_GUARD.set(guard);
+    Ok(writer)
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    init_tracing();
-
     tauri::Builder::default()
         .plugin(tauri_plugin_store::Builder::new().build())
         .manage(AppState::new())
         .manage(VoiceSessions::new())
         .manage(AuthSession::new())
         .setup(|app| {
+            init_tracing(app.handle());
             if let Some(win) = app.get_webview_window("main") {
                 if let Ok(Some(monitor)) = win.current_monitor() {
                     let scale = monitor.scale_factor();
@@ -154,6 +208,8 @@ pub fn run() {
             buddy::commands::buddy_list_traits,
             buddy::commands::buddy_rename,
             buddy::commands::buddy_activate,
+            buddy::commands::buddy_create,
+            buddy::commands::buddy_delete,
             // Auth (Xyzen device-code flow).
             auth::session::auth_status,
             auth::session::auth_start,

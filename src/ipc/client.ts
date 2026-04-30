@@ -89,7 +89,7 @@ export function useIpcSetting<T>(key: string, defaultValue: T): Ref<T> {
     void unwrap(commands.settingsSet(key, encoded)).catch((err) => {
       console.warn(`[ipc] settings_set ${key} failed:`, err)
     })
-  }, { deep: true })
+  }, { deep: true, flush: 'sync' })
 
   onScopeDispose(() => {
     try { unlisten?.() } catch {}

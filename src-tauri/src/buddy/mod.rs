@@ -16,7 +16,7 @@ use tauri::{AppHandle, Runtime};
 /// Logs on failure so callers don't need to branch on the result.
 pub async fn sync_after_auth<R: Runtime>(app: AppHandle<R>) {
     match commands::buddy_sync_internal(&app).await {
-        Ok(_) => tracing::info!("[buddy] post-auth sync ok"),
-        Err(e) => tracing::warn!("[buddy] post-auth sync failed: {e:?}"),
+        Ok(_) => tracing::info!("post-auth sync ok"),
+        Err(e) => tracing::warn!(err = ?e, "post-auth sync failed"),
     }
 }

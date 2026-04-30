@@ -10,7 +10,7 @@ use std::sync::Mutex;
 use serde::{Deserialize, Serialize};
 use specta::Type;
 use tauri::{AppHandle, Emitter, Runtime};
-use tracing::{debug, info};
+use tracing::{info, instrument};
 
 pub use super::fsm::VoiceState;
 
@@ -80,16 +80,14 @@ fn new_session_id() -> String {
 
 #[tauri::command]
 #[specta::specta]
+#[instrument(skip(app, sessions), err(Debug))]
 pub fn voice_start<R: Runtime>(
     app: AppHandle<R>,
     sessions: tauri::State<'_, VoiceSessions>,
     opts: VoiceStartOpts,
 ) -> Result<String, String> {
     let id = new_session_id();
-    info!(
-        "[voice] start session={} buddy_id={}",
-        id, opts.buddy_id
-    );
+    info!(session_id = %id, buddy_id = %opts.buddy_id, "voice start");
     sessions.set(&app, &id, VoiceState::Idle);
     sessions.set(&app, &id, VoiceState::Listening);
     Ok(id)
@@ -97,29 +95,27 @@ pub fn voice_start<R: Runtime>(
 
 #[tauri::command]
 #[specta::specta]
+#[instrument(skip(app, sessions), err(Debug))]
 pub fn voice_stop<R: Runtime>(
     app: AppHandle<R>,
     sessions: tauri::State<'_, VoiceSessions>,
     session_id: String,
 ) -> Result<(), String> {
-    info!("[voice] stop session={}", session_id);
+    info!(%session_id, "voice stop");
     sessions.remove(&app, &session_id);
     Ok(())
 }
 
 #[tauri::command]
 #[specta::specta]
+#[allow(unused_variables)]
+#[instrument(level = "trace", skip(pcm))]
 pub fn voice_push_frame(
     session_id: String,
     pcm: Vec<i16>,
 ) -> Result<(), String> {
     // Drop silently for now — the scaffold has nowhere to route audio.
-    // Logged at debug so the dev console can confirm frames are arriving.
-    debug!(
-        "[voice] push_frame session={} len={}",
-        session_id,
-        pcm.len()
-    );
+    // The trace-level span above is enough to confirm frames are arriving.
     Ok(())
 }
 

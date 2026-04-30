@@ -195,7 +195,7 @@ impl VadWorker {
     /// Push a 20 ms PCM16 frame (320 samples). Converts to float and queues.
     pub async fn push_frame(&self, pcm16: &[u8]) {
         let Some(samples) = decode_pcm16(pcm16) else {
-            warn!("[vad] dropping malformed frame (len={})", pcm16.len());
+            warn!(len = pcm16.len(), "dropping malformed frame");
             return;
         };
         let guard = self.state.lock().await;
@@ -208,7 +208,7 @@ impl VadWorker {
                 // Channel is full — a slower-than-realtime model would
                 // otherwise back up the IPC caller. Drop oldest keeps the
                 // speech-start FSM responsive.
-                debug!("[vad] frame queue full; dropping");
+                debug!("frame queue full; dropping");
             }
             Err(mpsc::error::TrySendError::Closed(_)) => {}
         }
@@ -232,7 +232,7 @@ fn run_blocking(
     mut frame_rx: mpsc::Receiver<Vec<f32>>,
     sink: mpsc::UnboundedSender<VadSignal>,
 ) {
-    info!("[vad] loading silero from {:?}", model_path);
+    info!(path = ?model_path, "loading silero model");
     let mut silero = match Silero::load(&model_path) {
         Ok(s) => s,
         Err(e) => {
@@ -263,7 +263,7 @@ fn run_blocking(
             let prob = match silero.infer(&window) {
                 Ok(p) => p,
                 Err(e) => {
-                    warn!("[vad] infer error: {e}");
+                    warn!(err = %e, "infer error");
                     continue;
                 }
             };
@@ -286,5 +286,5 @@ fn run_blocking(
         }
     }
 
-    info!("[vad] worker exited");
+    info!("worker exited");
 }

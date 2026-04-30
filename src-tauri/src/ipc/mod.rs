@@ -20,6 +20,7 @@ pub struct AppInfo {
 
 #[tauri::command]
 #[specta::specta]
+#[tracing::instrument(level = "debug")]
 pub fn app_info() -> AppInfo {
     AppInfo {
         version: env!("CARGO_PKG_VERSION").to_string(),
@@ -47,6 +48,8 @@ pub fn bindings_builder() -> Builder<tauri::Wry> {
             buddy::commands::buddy_list_traits::<tauri::Wry>,
             buddy::commands::buddy_rename::<tauri::Wry>,
             buddy::commands::buddy_activate::<tauri::Wry>,
+            buddy::commands::buddy_create::<tauri::Wry>,
+            buddy::commands::buddy_delete::<tauri::Wry>,
             auth::session::auth_status,
             auth::session::auth_start::<tauri::Wry>,
             auth::session::auth_cancel::<tauri::Wry>,

@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use specta::Type;
 use tauri::{AppHandle, Emitter, Manager, Runtime};
 use tokio::task::JoinHandle;
-use tracing::{info, warn};
+use tracing::{info, instrument, warn};
 
 use crate::auth::client::{AuthClient, AuthorizeResponse, PollOutcome, DEFAULT_SCOPE};
 use crate::auth::settings::{
@@ -101,12 +101,14 @@ impl Default for AuthSession {
 
 #[tauri::command]
 #[specta::specta]
+#[instrument(skip(session))]
 pub fn auth_status(session: tauri::State<'_, AuthSession>) -> AuthStatus {
     session.snapshot()
 }
 
 #[tauri::command]
 #[specta::specta]
+#[instrument(skip(app), err(Debug))]
 pub async fn auth_start<R: Runtime>(
     app: AppHandle<R>,
 ) -> Result<AuthStartResponse, String> {
@@ -118,8 +120,10 @@ pub async fn auth_start<R: Runtime>(
     let client = AuthClient::new(origin);
     let authorize: AuthorizeResponse = client.authorize(&cid, DEFAULT_SCOPE).await?;
     info!(
-        "[auth] authorize ok: user_code={} expires_in={}s interval={}s",
-        authorize.user_code, authorize.expires_in, authorize.interval
+        user_code = %authorize.user_code,
+        expires_in_s = authorize.expires_in,
+        interval_s = authorize.interval,
+        "authorize ok",
     );
 
     let session = app.state::<AuthSession>();
@@ -162,6 +166,7 @@ pub async fn auth_start<R: Runtime>(
 
 #[tauri::command]
 #[specta::specta]
+#[instrument(skip(app), err(Debug))]
 pub fn auth_cancel<R: Runtime>(app: AppHandle<R>) -> Result<(), String> {
     let session = app.state::<AuthSession>();
     session.cancel_task();
@@ -171,6 +176,7 @@ pub fn auth_cancel<R: Runtime>(app: AppHandle<R>) -> Result<(), String> {
 
 #[tauri::command]
 #[specta::specta]
+#[instrument(skip(app), err(Debug))]
 pub fn auth_sign_out<R: Runtime>(app: AppHandle<R>) -> Result<(), String> {
     let session = app.state::<AuthSession>();
     session.cancel_task();
@@ -178,7 +184,7 @@ pub fn auth_sign_out<R: Runtime>(app: AppHandle<R>) -> Result<(), String> {
     // Drop the cached buddy envelope so a subsequent sign-in on this
     // device doesn't inherit the previous user's buddy.
     if let Err(e) = crate::buddy::cache::clear(&app) {
-        warn!("[auth] buddy cache clear failed on sign-out: {e:?}");
+        warn!(err = ?e, "buddy cache clear failed on sign-out");
     }
     session.set_status(&app, AuthStatus::idle());
     Ok(())
@@ -198,7 +204,7 @@ async fn run_poll_loop<R: Runtime>(
 
     loop {
         if now_ms() >= expires_at_ms {
-            warn!("[auth] poll loop hit expires_in; giving up");
+            warn!("poll loop hit expires_in; giving up");
             if let Some(session) = app.try_state::<AuthSession>() {
                 session.set_status(
                     &app,
@@ -215,9 +221,9 @@ async fn run_poll_loop<R: Runtime>(
 
         match client.poll_token(&buddy_code).await {
             PollOutcome::Success(token) => {
-                info!("[auth] token acquired");
+                info!("token acquired");
                 if let Err(e) = store_tokens(&app, &token.access_token, token.refresh_token.as_deref()) {
-                    warn!("[auth] token persist failed: {e}");
+                    warn!(err = %e, "token persist failed");
                     if let Some(session) = app.try_state::<AuthSession>() {
                         session.set_status(
                             &app,
@@ -245,7 +251,7 @@ async fn run_poll_loop<R: Runtime>(
                 "authorization_pending" => continue,
                 "slow_down" => {
                     interval += 5;
-                    info!("[auth] slow_down: bumping interval to {interval}s");
+                    info!(interval_s = interval, "slow_down: bumping interval");
                     continue;
                 }
                 "access_denied" | "expired_token" => {
@@ -278,7 +284,7 @@ async fn run_poll_loop<R: Runtime>(
                 }
             },
             PollOutcome::Transport(err) => {
-                warn!("[auth] transport error: {err}");
+                warn!(err = %err, "transport error");
                 if let Some(session) = app.try_state::<AuthSession>() {
                     session.set_status(
                         &app,

@@ -13,10 +13,11 @@ import ThreeScene from './three/components/ThreeScene.vue'
 import { DEFAULT_GESTURE_ACTIONS, useVRMGestureDriver } from './three/composables/vrm/gesture-driver'
 import { useModelStore } from './three/stores/model-store'
 import { invoke } from '@tauri-apps/api/core'
-import type { CachedBuddyEnvelope } from './ipc/bindings'
+import type { AuthStatus, CachedBuddyEnvelope } from './ipc/bindings'
 import { commands } from './ipc/bindings'
-import { useIpcSetting } from './ipc/client'
+import { useIpcEvent, useIpcSetting } from './ipc/client'
 import { CACHE_KEY_BUDDY_ENVELOPE } from './ipc/keys'
+import OnboardingRitual from './components/OnboardingRitual.vue'
 
 const audioContextStore = useAudioContext()
 const generalStore = useGeneralStore()
@@ -47,14 +48,39 @@ const buddyRootStyle = computed(() => ({ filter: `brightness(${brightness.value}
 // window opened via `open_buddy_settings_window`.
 const isSettingsRoute = typeof window !== 'undefined' && window.location.hash.startsWith('#/settings')
 
+// First-time onboarding trigger: shown when the user is authenticated
+// AND the remote envelope explicitly has `buddy === null`. If the cache
+// is cold, the watch below kicks off a sync so we can decide.
+const authStatusKind = ref<AuthStatus['kind']>('idle')
+useIpcEvent<AuthStatus>('auth://status', (s) => { authStatusKind.value = s.kind })
+const onboardingSyncing = ref(false)
+const showOnboarding = computed(() => {
+  if (isSettingsRoute) return false
+  if (authStatusKind.value !== 'authenticated') return false
+  const c = cachedBuddyEnvelope.value
+  if (c === null) return false            // cold cache — wait for sync
+  return (c.envelope?.buddy ?? null) === null
+})
+watch(
+  [authStatusKind, cachedBuddyEnvelope] as const,
+  async ([kind, cache]) => {
+    if (kind !== 'authenticated' || cache !== null || onboardingSyncing.value) return
+    onboardingSyncing.value = true
+    try { await commands.buddySync() }
+    catch {}
+    finally { onboardingSyncing.value = false }
+  },
+  { immediate: true },
+)
+
 const hovering = ref(false)
 
 // --- Edit-mode state: window resize persisted here; VRM position lives in the
 //     model store's `modelOffset` (Vec3 in world space) which VRMModel watches
 //     and applies to `vrmGroup.position`. ---
-const WINDOW_DEFAULT = { w: 240, h: 320 }
+const WINDOW_DEFAULT = { w: 800, h: 600 }
 const WINDOW_MIN = { w: 180, h: 240 }
-const WINDOW_MAX = { w: 640, h: 900 }
+const WINDOW_MAX = { w: 1200, h: 900 }
 const windowSize = useLocalStorage('buddy-window-size', { ...WINDOW_DEFAULT })
 const editMode = ref(false)
 function toggleEditMode() { editMode.value = !editMode.value }
@@ -300,6 +326,12 @@ onMounted(async () => {
   // (typedError resolves the result; nothing to await).
   void commands.buddyGetMe()
 
+  // Prime auth status from the current snapshot so the onboarding
+  // trigger doesn't wait for the next `auth://status` event.
+  commands.authStatus()
+    .then((s) => { authStatusKind.value = s.kind })
+    .catch(() => {})
+
   console.info('[buddy:voice:app] auto-starting voice session on mount')
   await voiceSession.start().catch(err => console.warn('[buddy] voice session start failed', err))
 })
@@ -499,6 +531,10 @@ onBeforeUnmount(() => {
       </div>
     </div>
   </div>
+  <OnboardingRitual
+    v-if="showOnboarding"
+    :open="showOnboarding"
+  />
 </template>
 
 <style scoped>

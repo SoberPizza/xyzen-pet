@@ -9,3 +9,12 @@
 
 /** Mirrors `crate::buddy::cache::KEY_BUDDY_CACHE`. */
 export const CACHE_KEY_BUDDY_ENVELOPE = 'buddy/cache/envelope'
+
+/**
+ * Per-buddy local nickname slot. The remote buddy schema has no
+ * nickname field; we stash one locally so `BuddyDetailsDialog` and the
+ * onboarding ritual can share a wake-word.
+ */
+export function buddyNicknameKey(buddyId: string): string {
+  return `buddy/nicknames/${buddyId}`
+}

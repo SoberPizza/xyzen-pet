@@ -7,9 +7,10 @@
  * Gender, stage, hatched_at, race details, and trait chips are read-only
  * until the backend grows matching endpoints.
  *
- * Note: the three nickname slots are UI-only local state. The remote API
- * has no nickname field; persisting them would mean committing a schema
- * to `extra_metadata`, which we want to avoid.
+ * Nicknames persist locally under `buddy/nicknames/{buddyId}` via the
+ * `saveNicknames` helper (shared with `OnboardingRitual.vue`). The remote
+ * buddy API has no nickname field, so they stay on-device; the future
+ * voice FSM will read the same key for wake-word matching.
  */
 
 import { computed, reactive, ref, watch } from 'vue'
@@ -17,6 +18,11 @@ import { computed, reactive, ref, watch } from 'vue'
 import type { BuddyError, CachedBuddyEnvelope, RaceReadDTO, TraitReadDTO } from '../../../ipc/bindings'
 import { commands } from '../../../ipc/bindings'
 import { tBuddy } from '../../../locales'
+import {
+  loadNicknames,
+  MAX_NICKNAMES,
+  saveNicknames,
+} from '../../../utils/nicknames'
 import {
   validateWakeTerm,
   wakeTermLength,
@@ -73,7 +79,6 @@ function traitLabel(t: TraitReadDTO): string {
   return (localeIsZh ? t.name_zh : t.name_en) || t.code
 }
 
-const MAX_NICKNAMES = 3
 const NICKNAME_HTML_MAXLENGTH = 16
 const WAKE_TERM_HINT = 'Use 2–8 Chinese characters or 4–16 English characters.'
 
@@ -87,19 +92,28 @@ function emptyForm(): FormState {
 }
 
 const form = reactive<FormState>(emptyForm())
+const nicknameSlots = reactive<string[]>(['', '', ''])
 const saving = ref(false)
 const activating = ref(false)
+const breaking = ref(false)
+// Two-step confirm: first click arms the button, second click runs.
+// Reset on dialog close and on every other footer action.
+const confirmingBreak = ref(false)
 const saveError = ref<string | null>(null)
 
-function fillFormFrom(cached: CachedBuddyEnvelope | null) {
+async function fillFormFrom(cached: CachedBuddyEnvelope | null) {
   const b = cached?.envelope?.buddy ?? null
   if (!b) {
     Object.assign(form, emptyForm())
+    for (let i = 0; i < MAX_NICKNAMES; i++) nicknameSlots[i] = ''
     return
   }
   form.name = b.name
-  form.nicknamesText = ''
   saveError.value = null
+
+  const persisted = await loadNicknames(b.id)
+  for (let i = 0; i < MAX_NICKNAMES; i++) nicknameSlots[i] = persisted[i] ?? ''
+  form.nicknamesText = nicknameSlots.filter(Boolean).join(', ')
 }
 
 watch(
@@ -132,8 +146,6 @@ const nicknamesList = computed<string[]>(() =>
     .map(s => s.trim())
     .filter(Boolean),
 )
-
-const nicknameSlots = reactive<string[]>(['', '', ''])
 
 const nameError = computed(() =>
   wakeTermError(form.name, { allowEmpty: false }),
@@ -220,22 +232,23 @@ async function save() {
   const b = buddy.value
   if (!b) return
   if (wakeWordsInvalid.value) return
-  if (form.name.trim() === b.name) {
-    open.value = false
-    return
-  }
+  commitSlots()
+
+  const nameChanged = form.name.trim() !== b.name
   saving.value = true
   saveError.value = null
   try {
-    const result = await commands.buddyRename(b.id, form.name.trim())
-    if (result.status === 'ok') {
-      // Cache write fires a `settings://changed` event; `useIpcSetting`
-      // in the parent panel will re-read and re-render us via the
-      // `cached` prop.
-      open.value = false
-    } else {
-      saveError.value = mapError(result.error)
+    if (nameChanged) {
+      const result = await commands.buddyRename(b.id, form.name.trim())
+      if (result.status === 'error') {
+        saveError.value = mapError(result.error)
+        return
+      }
+      // Cache write fires `settings://changed`; `useIpcSetting` in the
+      // parent panel re-reads and re-renders us via the `cached` prop.
     }
+    await saveNicknames(b.id, nicknameSlots)
+    open.value = false
   } catch (err) {
     saveError.value = err instanceof Error ? err.message : String(err)
   } finally {
@@ -244,6 +257,7 @@ async function save() {
 }
 
 function cancel() {
+  confirmingBreak.value = false
   fillFormFrom(props.cached)
   open.value = false
 }
@@ -255,6 +269,7 @@ function onOverlayClick(e: MouseEvent) {
 async function setActive() {
   const b = buddy.value
   if (!b) return
+  confirmingBreak.value = false
   activating.value = true
   saveError.value = null
   try {
@@ -267,6 +282,34 @@ async function setActive() {
     saveError.value = err instanceof Error ? err.message : String(err)
   } finally {
     activating.value = false
+  }
+}
+
+async function breakBond() {
+  const b = buddy.value
+  if (!b) return
+  if (!confirmingBreak.value) {
+    confirmingBreak.value = true
+    return
+  }
+  breaking.value = true
+  saveError.value = null
+  try {
+    const result = await commands.buddyDelete(b.id)
+    if (result.status === 'error') {
+      saveError.value = mapError(result.error)
+      confirmingBreak.value = false
+      return
+    }
+    // Server deleted + Rust cleared the cache and nickname slots.
+    // `useIpcSetting` in the parent panel will flip back to the
+    // "no buddy cached" empty state on the next `settings://changed`.
+    open.value = false
+  } catch (err) {
+    saveError.value = err instanceof Error ? err.message : String(err)
+    confirmingBreak.value = false
+  } finally {
+    breaking.value = false
   }
 }
 </script>
@@ -340,7 +383,7 @@ async function setActive() {
               <div class="nickname-row">
                 <div class="nickname-header">
                   <label class="section-title">Nicknames</label>
-                  <span class="nickname-hint">Wake words · 2–8 中文 / 4–16 English · local only</span>
+                  <span class="nickname-hint">Wake words · 2–8 中文 / 4–16 English </span>
                 </div>
                 <div class="nickname-inputs">
                   <input
@@ -364,17 +407,16 @@ async function setActive() {
                 </p>
               </div>
               <div class="meta-row">
-                <div
-                  v-if="hatchedDisplay"
-                  class="meta-item"
-                  :title="buddy.hatched_at ?? undefined"
-                >
-                  <span class="meta-label">Hatched:</span>
-                  <span class="meta-value">{{ hatchedDisplay }}</span>
-                </div>
                 <div class="meta-item">
                   <span class="meta-label">Gender:</span>
                   <span class="meta-value">{{ genderLabel }}</span>
+                </div>
+                <div
+                  class="meta-item"
+                  :title="buddy.hatched_at ?? undefined"
+                >
+                  <span class="meta-label">Birthday:</span>
+                  <span class="meta-value">{{ hatchedDisplay ?? '—' }}</span>
                 </div>
               </div>
             </div>
@@ -470,22 +512,33 @@ async function setActive() {
             <button
               v-if="!isActive"
               class="activate-btn"
-              :disabled="activating || saving"
+              :disabled="activating || saving || breaking"
               @click="setActive"
             >
               {{ activating ? 'Activating…' : 'Activate' }}
             </button>
+            <button
+              class="danger-btn"
+              :class="{ 'danger-btn-armed': confirmingBreak }"
+              :disabled="saving || activating || breaking"
+              :title="confirmingBreak ? 'Click again to permanently break the bond' : 'Permanently delete this buddy'"
+              @click="breakBond"
+            >
+              {{ breaking
+                ? 'Breaking…'
+                : confirmingBreak ? 'Confirm?' : 'Break Bond' }}
+            </button>
             <div class="footer-spacer" />
             <button
               class="secondary-btn"
-              :disabled="saving"
+              :disabled="saving || breaking"
               @click="cancel"
             >
               Cancel
             </button>
             <button
               class="primary-btn"
-              :disabled="saving || wakeWordsInvalid"
+              :disabled="saving || breaking || wakeWordsInvalid"
               @click="save"
             >
               {{ saving ? 'Saving...' : 'Save' }}
@@ -672,7 +725,8 @@ async function setActive() {
   flex: 1;
 }
 .primary-btn,
-.secondary-btn {
+.secondary-btn,
+.danger-btn {
   border: none;
   border-radius: 10px;
   padding: 8px 16px;
@@ -703,6 +757,28 @@ async function setActive() {
   color: #eee;
 }
 .secondary-btn:disabled {
+  color: #666;
+  cursor: default;
+}
+.danger-btn {
+  background: rgba(220, 70, 70, 0.12);
+  color: #e08a8a;
+  border: 1px solid rgba(220, 70, 70, 0.25);
+}
+.danger-btn:hover:not(:disabled) {
+  background: rgba(220, 70, 70, 0.22);
+  border-color: rgba(220, 70, 70, 0.45);
+  color: #f2a0a0;
+}
+.danger-btn-armed,
+.danger-btn-armed:hover:not(:disabled) {
+  background: rgba(220, 70, 70, 0.45);
+  border-color: rgba(220, 70, 70, 0.7);
+  color: #fff;
+}
+.danger-btn:disabled {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.06);
   color: #666;
   cursor: default;
 }
