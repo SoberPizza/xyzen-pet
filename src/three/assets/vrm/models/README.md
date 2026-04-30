@@ -34,8 +34,8 @@ extension stripped:
       <race_code>_<stage>.png     # optional preview thumbnail
       animation-driver.ts         # optional — per-model gesture overrides
 
-So a buddy with `race_code="jiuwei"` and `stage="infant"` resolves to
-`jiuwei_infant/jiuwei_infant.vrm`. Use letters, digits, and
+So a buddy with `race_code="lihuan"` and `stage="infant"` resolves to
+`lihuan_infant/lihuan_infant.vrm`. Use letters, digits, and
 hyphens/underscores only — no spaces. Thumbnail: 512×512 PNG with
 transparent background works well.
 
@@ -53,7 +53,7 @@ global `DEFAULT_GESTURE_ACTIONS` registry.
 import type { AnimationDriver } from '../../../../composables/vrm/animation-driver'
 
 export const driver: AnimationDriver = {
-  raceCode: 'jiuwei',
+  raceCode: 'lihuan',
   stage: 'infant',
   gestures: {
     wave: {

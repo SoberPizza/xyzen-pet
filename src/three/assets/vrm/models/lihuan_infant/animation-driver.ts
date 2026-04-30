@@ -1,7 +1,7 @@
 import type { AnimationDriver } from '../../../../composables/vrm/animation-driver'
 
 /**
- * jiuwei_infant — non-humanoid / creature-shaped VRM for the Jiuwei race
+ * lihuan_infant — non-humanoid / creature-shaped VRM for the Lihuan race
  * at the infant stage. Arm-based gestures (wave, clap, point) don't read
  * well on this rig, so we re-express them as face / head motion: stronger
  * mouth-morph pulses and look pulses stand in for body language.
@@ -9,7 +9,7 @@ import type { AnimationDriver } from '../../../../composables/vrm/animation-driv
  * which are already look-and-morph based.
  */
 export const driver: AnimationDriver = {
-  raceCode: 'jiuwei',
+  raceCode: 'lihuan',
   stage: 'infant',
   gestures: {
     wave: {

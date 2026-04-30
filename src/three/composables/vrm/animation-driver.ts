@@ -14,7 +14,7 @@ import type { GestureDescriptor } from './gesture-driver'
  * `buddy_get_me`'s envelope.
  */
 export interface AnimationDriver {
-  /** Race/species tag, e.g. `"egg"`, `"jiuwei"`. */
+  /** Race/species tag, e.g. `"egg"`, `"lihuan"`. */
   raceCode: string
   /** Growth stage tag, e.g. `"egg"`, `"adult"`. */
   stage: string

@@ -7,8 +7,8 @@ import { useAudioContext } from './stores/audio'
 import { useGeneralStore } from './stores/general'
 import { useBuddyVoiceSession } from './composables/useBuddyVoiceSession'
 import SettingsStandalone from './components/SettingsStandalone.vue'
-import defaultVrmUrl from './three/assets/vrm/models/jiuwei_infant/jiuwei_infant.vrm?url'
-import { driver as defaultAnimationDriver } from './three/assets/vrm/models/jiuwei_infant/animation-driver'
+import defaultVrmUrl from './three/assets/vrm/models/lihuan_infant/lihuan_infant.vrm?url'
+import { driver as defaultAnimationDriver } from './three/assets/vrm/models/lihuan_infant/animation-driver'
 import { animations } from './three/assets/vrm'
 import ThreeScene from './three/components/ThreeScene.vue'
 import { DEFAULT_GESTURE_ACTIONS, useVRMGestureDriver } from './three/composables/vrm/gesture-driver'
@@ -206,7 +206,7 @@ const { audioContext } = audioContextStore
 // --- Gesture driver: IPC `avatar://gesture` events → VRM actions. ---
 //
 // The registry bakes the default action map with the bundled
-// jiuwei_infant driver's overrides. When the new buddy-info API lands
+// lihuan_infant driver's overrides. When the new buddy-info API lands
 // we'll switch back to a per-active-buddy registry, but today there's
 // only one model.
 const mergedRegistry = {
