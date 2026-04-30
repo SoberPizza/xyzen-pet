@@ -5,7 +5,9 @@ import { useLocalStorage } from '@vueuse/core'
 
 import { useAudioContext } from './stores/audio'
 import { useGeneralStore } from './stores/general'
+import { useBuddySession } from './composables/useBuddySession'
 import { useBuddyVoiceSession } from './composables/useBuddyVoiceSession'
+import BuddyStatusOverlay from './components/BuddyStatusOverlay.vue'
 import SettingsStandalone from './components/SettingsStandalone.vue'
 import { animations } from './three/assets/vrm'
 import { resolveVrmAsset } from './three/assets/vrm/models/registry'
@@ -246,7 +248,7 @@ const { audioContext } = audioContextStore
 // Function-form `registry` so swapping the active buddy also swaps its
 // per-model gesture overrides — `useVRMGestureDriver` flushes the
 // cooldown map when the returned registry reference changes.
-useVRMGestureDriver({
+const gestureDriver = useVRMGestureDriver({
   target: () => {
     if (stageModelRenderer.value !== 'vrm') return undefined
     const viewer = vrmViewerRef.value
@@ -262,6 +264,18 @@ useVRMGestureDriver({
     ...(activeVrmAsset.value?.driver?.gestures ?? {}),
   }),
 })
+
+// --- Buddy session-status stream: Rust pushes `buddy://session-status`
+//     events, `useBuddySession` mirrors them into `ui` + `vrm` refs, and
+//     `BuddyStatusOverlay` renders the UI side. For the VRM side we just
+//     dispatch the keyword through the gesture driver — the registry
+//     above already has entries for every `BuddyVrmKeyword`. ---
+const buddySession = useBuddySession()
+watch(buddySession.vrm, (next, prev) => {
+  console.info('[buddy-session] vrm→gesture', { prev, next })
+  const dispatched = gestureDriver.dispatch(next)
+  if (!dispatched) console.warn('[buddy-session] dispatch rejected', next)
+}, { immediate: true })
 
 // --- Voice session: driven by the Rust FSM via IPC. ---
 const voiceSession = useBuddyVoiceSession()
@@ -374,6 +388,10 @@ onBeforeUnmount(() => {
           {{ cachedBuddyEnvelope ? 'No model available' : 'Loading model...' }}
         </div>
       </div>
+
+      <!-- Session-status pill + transient toasts in the top-left. Hidden
+           in edit mode so it can't shadow the resize handle. -->
+      <BuddyStatusOverlay v-if="!editMode" />
 
       <!-- Edit-mode overlays: move (fills avatar area) + resize (top-left corner). -->
       <template v-if="editMode">

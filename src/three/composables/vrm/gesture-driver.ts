@@ -148,6 +148,40 @@ export const DEFAULT_GESTURE_ACTIONS: Readonly<Record<string, GestureDescriptor>
     { kind: 'expression', name: 'happy', intensity: 0.8 },
     { kind: 'morph', name: 'aa', peak: 0.4, ms: 220 },
   ] },
+
+  // ── Buddy session-status VRM keywords (mirrors `BuddyVrmKeyword` in
+  //    `src-tauri/src/session_stream/types.rs`, same snake_case). Composed
+  //    only from `expression` + `look` primitives — mouth-open morphs are
+  //    intentionally NOT fired here: real lipsync will come from the voice
+  //    stream, and faking `aa` on `speaking` would desync with it. ──
+  idle: { actions: [
+    { kind: 'expression', name: 'neutral', intensity: 1 },
+  ] },
+  listening: { actions: [
+    { kind: 'look', dir: 'lookDown', ms: 300 },
+    { kind: 'expression', name: 'neutral', intensity: 1 },
+  ] },
+  thinking: { actions: [
+    { kind: 'look', dir: 'lookUp', ms: 700 },
+    { kind: 'expression', name: 'neutral', intensity: 1 },
+  ] },
+  speaking: { actions: [
+    { kind: 'expression', name: 'happy', intensity: 0.55 },
+  ] },
+  tool_using: { actions: [
+    { kind: 'look', dir: 'lookRight', ms: 600 },
+    { kind: 'expression', name: 'neutral', intensity: 1 },
+  ] },
+  celebrating: { actions: [
+    { kind: 'expression', name: 'happy', intensity: 0.85 },
+  ] },
+  confused: { actions: [
+    { kind: 'expression', name: 'surprised', intensity: 0.65 },
+    { kind: 'look', dir: 'lookDown', ms: 400 },
+  ] },
+  // Note: `idle` is already registered implicitly — the dispatcher drops
+  // unknown gestures silently, and `idle` doesn't need an override since
+  // the avatar's own idle animation reads as neutral.
 }
 
 const DEFAULT_COOLDOWN_MS = 800
@@ -251,10 +285,18 @@ export function useVRMGestureDriver(options: UseVRMGestureDriverOptions) {
     }
     const cooldown = descriptor.cooldownMs ?? DEFAULT_COOLDOWN_MS
     const prev = lastFiredAt.get(gesture) ?? -Infinity
-    if (at - prev < cooldown) return false
+    if (at - prev < cooldown) {
+      if (import.meta.env.DEV)
+        console.debug('[gesture-driver] cooldown block', gesture, { sinceMs: at - prev, cooldown })
+      return false
+    }
 
     const target = options.target()
-    if (!target) return false
+    if (!target) {
+      if (import.meta.env.DEV)
+        console.debug('[gesture-driver] no target for', gesture)
+      return false
+    }
 
     lastFiredAt.set(gesture, at)
     const scale = Math.min(1, Math.max(0, intensity))
@@ -266,6 +308,8 @@ export function useVRMGestureDriver(options: UseVRMGestureDriverOptions) {
         console.warn('[gesture-driver] action failed', gesture, action, err)
       }
     }
+    if (import.meta.env.DEV)
+      console.debug('[gesture-driver] dispatched', gesture, 'actions=', descriptor.actions.length)
     options.onDispatch?.(gesture, descriptor)
     return true
   }

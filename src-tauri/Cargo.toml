@@ -38,9 +38,15 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tracing-appender = "0.2.3"
 
-# HTTP client for the Xyzen auth flow (device-code grant). `rustls-tls` keeps
-# the Pi aarch64 image free of a system-OpenSSL dep.
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
+# HTTP client for the Xyzen auth flow (device-code grant) + the Buddy
+# session-status SSE stream. `rustls-tls` keeps the Pi aarch64 image free of
+# a system-OpenSSL dep; `stream` unlocks `Response::bytes_stream()` for the
+# SSE reader in `session_stream::session`.
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "stream"] }
+
+# `StreamExt::next()` on the SSE byte stream. Kept narrow to avoid pulling
+# the whole futures umbrella.
+futures-util = { version = "0.3", default-features = false, features = ["std"] }
 
 # VAD. `ort` 2.x is API-stable enough for production; pinned to rc to
 # guard against API churn. `std` pulls the filesystem load path needed

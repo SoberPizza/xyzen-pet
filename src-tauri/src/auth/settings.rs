@@ -78,6 +78,8 @@ pub fn client_id<R: Runtime>(app: &AppHandle<R>) -> Option<String> {
     read_string(app, KEY_CLIENT_ID)
 }
 
+/// Current bearer token for authenticated Xyzen calls. `None` when the user
+/// has not completed the device-code flow (or has signed out).
 pub fn access_token<R: Runtime>(app: &AppHandle<R>) -> Option<String> {
     read_string(app, KEY_ACCESS_TOKEN)
 }

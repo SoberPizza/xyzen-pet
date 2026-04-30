@@ -63,6 +63,20 @@ export const commands = {
 	authStart: () => typedError<AuthStartResponse, string>(__TAURI_INVOKE("auth_start")),
 	authCancel: () => typedError<null, string>(__TAURI_INVOKE("auth_cancel")),
 	authSignOut: () => typedError<null, string>(__TAURI_INVOKE("auth_sign_out")),
+	/**
+	 *  Returns the last snapshot the stream has observed, or `None` if nothing
+	 *  has arrived yet. The Vue composable calls this on mount so the pill +
+	 *  VRM gesture can seed without waiting for a live frame.
+	 */
+	sessionStreamStatus: () => __TAURI_INVOKE<{
+	ui?: BuddyUiKeyword | null,
+	vrm?: BuddyVrmKeyword | null,
+	session_id?: string | null,
+	topic_id?: string | null,
+	ts: number,
+} | null>("session_stream_status"),
+	sessionStreamStart: () => typedError<null, string>(__TAURI_INVOKE("session_stream_start")),
+	sessionStreamStop: () => typedError<null, string>(__TAURI_INVOKE("session_stream_stop")),
 };
 
 /* Types */
@@ -151,9 +165,28 @@ export type BuddyExpandedTraits = {
 
 export type BuddyGender = "male" | "female" | "neutral";
 
+/**
+ *  Payload carried by every `snapshot` / `status` SSE frame. Mirrors
+ *  `buddy.session_schemas.BuddySessionEvent` — UUIDs cross the wire as
+ *  strings so specta emits plain `string` typings.
+ */
+export type BuddySessionEvent = {
+	ui?: BuddyUiKeyword | null,
+	vrm?: BuddyVrmKeyword | null,
+	session_id?: string | null,
+	topic_id?: string | null,
+	ts: number,
+};
+
 export type BuddyStage = "infant" | "mature" | "elder";
 
 export type BuddyTraitKind = "attribute" | "racial" | "generic";
+
+// UI-surface keyword. Mirrors `buddy.session_schemas.BuddyUiKeyword`.
+export type BuddyUiKeyword = "idle" | "session_started" | "session_ended" | "thinking" | "speaking" | "tool_running" | "tool_done" | "disconnected" | "reconnected" | "error";
+
+// VRM-surface keyword. Mirrors `buddy.session_schemas.BuddyVrmKeyword`.
+export type BuddyVrmKeyword = "idle" | "listening" | "thinking" | "speaking" | "tool_using" | "celebrating" | "confused";
 
 /**
  *  What we write to disk. The envelope is stored alongside a

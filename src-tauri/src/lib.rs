@@ -15,12 +15,14 @@ pub mod auth;
 pub mod buddy;
 pub mod events;
 pub mod ipc;
+pub mod session_stream;
 pub mod settings;
 pub mod state;
 pub mod vad;
 pub mod voice;
 
 use auth::AuthSession;
+use session_stream::SessionStreamSession;
 use state::AppState;
 use voice::VoiceSessions;
 
@@ -134,6 +136,40 @@ fn init_tracing<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
         .try_init();
 }
 
+/// Subscribe to `auth://status` so the SSE session-stream starts on
+/// `authenticated` and stops on `idle`. Also kicks off an initial start if
+/// tokens are already persisted at boot so we don't wait for the first
+/// sign-in to happen in the same process.
+fn wire_session_stream_autostart<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
+    use tauri::Listener;
+
+    let app_for_listener = app.clone();
+    app.listen(events::AUTH_STATUS_EVENT, move |evt| {
+        let kind = serde_json::from_str::<serde_json::Value>(evt.payload())
+            .ok()
+            .and_then(|v| v.get("kind").and_then(|k| k.as_str()).map(str::to_owned));
+        let Some(kind) = kind else {
+            tracing::warn!("[session_stream] auth event: unparseable payload={}", evt.payload());
+            return;
+        };
+        tracing::info!("[session_stream] auth event kind={kind}");
+        let session = app_for_listener.state::<SessionStreamSession>();
+        match kind.as_str() {
+            "authenticated" => session.start(app_for_listener.clone()),
+            "idle" | "error" => session.stop(),
+            _ => {}
+        }
+    });
+
+    // Boot path: if we already have a token, start immediately.
+    let has_token = auth::settings::access_token(app).is_some();
+    tracing::info!("[session_stream] boot: access_token present={has_token}");
+    if has_token {
+        let session = app.state::<SessionStreamSession>();
+        session.start(app.clone());
+    }
+}
+
 fn build_file_writer<R: tauri::Runtime>(
     app: &tauri::AppHandle<R>,
 ) -> Result<NonBlocking, String> {
@@ -164,8 +200,10 @@ pub fn run() {
         .manage(AppState::new())
         .manage(VoiceSessions::new())
         .manage(AuthSession::new())
+        .manage(SessionStreamSession::new())
         .setup(|app| {
             init_tracing(app.handle());
+            wire_session_stream_autostart(app.handle());
             if let Some(win) = app.get_webview_window("main") {
                 if let Ok(Some(monitor)) = win.current_monitor() {
                     let scale = monitor.scale_factor();
@@ -215,6 +253,10 @@ pub fn run() {
             auth::session::auth_start,
             auth::session::auth_cancel,
             auth::session::auth_sign_out,
+            // Buddy session-status SSE stream.
+            session_stream::session::session_stream_status,
+            session_stream::session::session_stream_start,
+            session_stream::session::session_stream_stop,
             // VAD (Silero-on-ort) — Rust-only concern; stays as a command
             // surface so the webview can hand over mic frames if needed.
             ipc::vad_cmd::vad_start,

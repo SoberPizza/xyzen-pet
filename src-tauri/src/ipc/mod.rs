@@ -9,6 +9,7 @@ use tauri_specta::{collect_commands, collect_events, Builder};
 
 use crate::auth;
 use crate::buddy;
+use crate::session_stream;
 use crate::settings;
 use crate::voice::session as voice_session;
 
@@ -54,6 +55,9 @@ pub fn bindings_builder() -> Builder<tauri::Wry> {
             auth::session::auth_start::<tauri::Wry>,
             auth::session::auth_cancel::<tauri::Wry>,
             auth::session::auth_sign_out::<tauri::Wry>,
+            session_stream::session::session_stream_status,
+            session_stream::session::session_stream_start::<tauri::Wry>,
+            session_stream::session::session_stream_stop,
         ])
         .events(collect_events![])
 }
