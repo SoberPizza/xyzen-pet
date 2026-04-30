@@ -7,23 +7,35 @@ import { useAudioContext } from './stores/audio'
 import { useGeneralStore } from './stores/general'
 import { useBuddyVoiceSession } from './composables/useBuddyVoiceSession'
 import SettingsStandalone from './components/SettingsStandalone.vue'
-import defaultVrmUrl from './three/assets/vrm/models/lihuan_infant/lihuan_infant.vrm?url'
-import { driver as defaultAnimationDriver } from './three/assets/vrm/models/lihuan_infant/animation-driver'
 import { animations } from './three/assets/vrm'
+import { resolveVrmAsset } from './three/assets/vrm/models/registry'
 import ThreeScene from './three/components/ThreeScene.vue'
 import { DEFAULT_GESTURE_ACTIONS, useVRMGestureDriver } from './three/composables/vrm/gesture-driver'
 import { useModelStore } from './three/stores/model-store'
 import { invoke } from '@tauri-apps/api/core'
+import type { CachedBuddyEnvelope } from './ipc/bindings'
 import { commands } from './ipc/bindings'
+import { useIpcSetting } from './ipc/client'
+import { CACHE_KEY_BUDDY_ENVELOPE } from './ipc/keys'
 
 const audioContextStore = useAudioContext()
 const generalStore = useGeneralStore()
 
-// Default VRM + animation driver. A future pass will resolve
-// `envelope.buddy.vrm_model` (returned from `buddy_get_me`) to an actual
-// asset URL once the VRM asset pipeline is in place.
-const stageModelSelectedUrl = ref<string>(defaultVrmUrl)
-const stageModelRenderer = ref<'vrm' | 'disabled'>('vrm')
+// VRM + animation driver come from the Rust buddy cache: `buddy_get_me`
+// returns a `BuddyCoreDTO.vrm_model` filename, which `resolveVrmAsset`
+// maps to a bundled URL + optional per-model gesture driver.
+const cachedBuddyEnvelope = useIpcSetting<CachedBuddyEnvelope | null>(
+  CACHE_KEY_BUDDY_ENVELOPE,
+  null,
+)
+const activeVrmAsset = computed(() => {
+  const vrmModel = cachedBuddyEnvelope.value?.envelope?.buddy?.vrm_model
+  return vrmModel ? resolveVrmAsset(vrmModel) : undefined
+})
+const stageModelSelectedUrl = computed<string | undefined>(() => activeVrmAsset.value?.url)
+const stageModelRenderer = computed<'vrm' | 'disabled'>(() =>
+  activeVrmAsset.value ? 'vrm' : 'disabled',
+)
 const stageViewControlsEnabled = ref(false)
 const activeDisplayConfig = computed(() => undefined)
 
@@ -205,14 +217,9 @@ const { audioContext } = audioContextStore
 
 // --- Gesture driver: IPC `avatar://gesture` events → VRM actions. ---
 //
-// The registry bakes the default action map with the bundled
-// lihuan_infant driver's overrides. When the new buddy-info API lands
-// we'll switch back to a per-active-buddy registry, but today there's
-// only one model.
-const mergedRegistry = {
-  ...DEFAULT_GESTURE_ACTIONS,
-  ...(defaultAnimationDriver.gestures ?? {}),
-}
+// Function-form `registry` so swapping the active buddy also swaps its
+// per-model gesture overrides — `useVRMGestureDriver` flushes the
+// cooldown map when the returned registry reference changes.
 useVRMGestureDriver({
   target: () => {
     if (stageModelRenderer.value !== 'vrm') return undefined
@@ -224,7 +231,10 @@ useVRMGestureDriver({
       pulseMorph: (name, peak, ms) => viewer.pulseMorph(name, peak, ms),
     }
   },
-  registry: mergedRegistry,
+  registry: () => ({
+    ...DEFAULT_GESTURE_ACTIONS,
+    ...(activeVrmAsset.value?.driver?.gestures ?? {}),
+  }),
 })
 
 // --- Voice session: driven by the Rust FSM via IPC. ---
@@ -284,10 +294,11 @@ onMounted(async () => {
     h: windowSize.value.h,
   })
 
-  // Warm up the buddy envelope so the VRM selector layer has something
-  // cached once it's wired up. Unauthenticated / transport errors are
-  // expected here and intentionally swallowed.
-  commands.buddyGetMe().catch(() => {})
+  // Warm the buddy envelope on mount — `useIpcSetting` picks up the
+  // resulting `settings://changed` emission and drives the VRM
+  // selection. Unauthenticated / transport errors are expected here
+  // (typedError resolves the result; nothing to await).
+  void commands.buddyGetMe()
 
   console.info('[buddy:voice:app] auto-starting voice session on mount')
   await voiceSession.start().catch(err => console.warn('[buddy] voice session start failed', err))
@@ -325,10 +336,10 @@ onBeforeUnmount(() => {
           @error="console.error"
         />
         <div
-          v-if="!stageModelRenderer || stageModelRenderer === 'disabled'"
+          v-if="stageModelRenderer === 'disabled'"
           class="buddy-scene buddy-scene-placeholder"
         >
-          {{ !stageModelRenderer ? 'Loading model...' : 'No model selected' }}
+          {{ cachedBuddyEnvelope ? 'No model available' : 'Loading model...' }}
         </div>
       </div>
 

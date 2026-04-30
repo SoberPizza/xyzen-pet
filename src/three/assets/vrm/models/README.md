@@ -81,10 +81,13 @@ Bundling a new VRM today is just two steps:
    `src/three/composables/vrm/animation-driver.ts`) whose `raceCode`
    and `stage` fields match the folder name.
 
-The frontend registry and selection wiring — which maps the
-backend-supplied `vrm_model` string to its bundled URL — lands with the
-rebuilt `buddy_get_active` command (per the doc comment in
-`animation-driver.ts`). No registry edit is required in this pass.
+Selection and registration are automatic. `registry.ts` next to this
+file globs every `<folder>/<folder>.vrm` plus its sibling
+`animation-driver.ts` at build time (`import.meta.glob`, eager) and
+exposes `resolveVrmAsset(vrm_model)` keyed on the bare filename. So
+"register a model" just means "drop the folder" — `App.vue` picks up
+the backend-supplied `BuddyCoreDTO.vrm_model` string via
+`buddy_get_me` and routes it through the resolver.
 
 ## Licensing
 
