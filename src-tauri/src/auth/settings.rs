@@ -78,6 +78,10 @@ pub fn client_id<R: Runtime>(app: &AppHandle<R>) -> Option<String> {
     read_string(app, KEY_CLIENT_ID)
 }
 
+pub fn access_token<R: Runtime>(app: &AppHandle<R>) -> Option<String> {
+    read_string(app, KEY_ACCESS_TOKEN)
+}
+
 pub fn store_tokens<R: Runtime>(
     app: &AppHandle<R>,
     access_token: &str,

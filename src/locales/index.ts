@@ -14,11 +14,8 @@ export type BuddyLocale = 'zh-CN' | 'en'
 
 type BuddyNamespace = {
   stage: Record<string, string>
-  category: Record<string, string>
   attribute: Record<string, string>
   gender: Record<string, string>
-  race: Record<string, string>
-  trait: Record<string, string>
 }
 
 const DICTIONARIES: Record<BuddyLocale, BuddyNamespace> = {

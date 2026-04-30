@@ -8,9 +8,10 @@ import type { GestureDescriptor } from './gesture-driver'
  * merges the driver's gestures over `DEFAULT_GESTURE_ACTIONS`, so a driver
  * only declares the gestures it wants to customize for that model's rig.
  *
- * `raceCode` + `stage` are kept as free-form strings; the old backend
- * enum was coupled to the Xyzen API and is gone. Future selection logic
- * will land alongside the rebuilt `buddy_get_active` command.
+ * `raceCode` + `stage` are kept as free-form strings so drivers can be
+ * keyed independently of the backend's `BuddyStage`/`BuddyRaceCode`
+ * enums. Future selection logic will resolve these from
+ * `buddy_get_me`'s envelope.
  */
 export interface AnimationDriver {
   /** Race/species tag, e.g. `"egg"`, `"jiuwei"`. */

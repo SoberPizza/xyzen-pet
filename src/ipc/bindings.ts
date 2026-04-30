@@ -14,8 +14,37 @@ export const commands = {
 	voiceStart: (opts: VoiceStartOpts) => typedError<string, string>(__TAURI_INVOKE("voice_start", { opts })),
 	voiceStop: (sessionId: string) => typedError<null, string>(__TAURI_INVOKE("voice_stop", { sessionId })),
 	voicePushFrame: (sessionId: string, pcm: number[]) => typedError<null, string>(__TAURI_INVOKE("voice_push_frame", { sessionId, pcm })),
-	buddyGetActive: () => __TAURI_INVOKE<BuddyDisplayInfo>("buddy_get_active"),
-	buddyList: () => __TAURI_INVOKE<BuddyDisplayInfo[]>("buddy_list"),
+	/**
+	 *  Pure local read. Returns `Ok(None)` when the cache is cold — UI
+	 *  prompts the user to sync in that case. No network call here by
+	 *  design: normal panel opens must not cost bandwidth.
+	 */
+	buddyGetMe: () => typedError<{
+	envelope: BuddyEnvelope,
+	// Unix epoch millis at the moment the envelope was written.
+	synced_at_ms: number,
+} | null, BuddyError>(__TAURI_INVOKE("buddy_get_me")),
+	/**
+	 *  Explicit refresh: hit `GET /me`, update the cache, return the
+	 *  fresh wrapper. Vue's Refresh button and the post-auth warm path
+	 *  both land here.
+	 */
+	buddySync: () => typedError<CachedBuddyEnvelope, BuddyError>(__TAURI_INVOKE("buddy_sync")),
+	/**
+	 *  Clears the on-disk cache. Called from `auth_sign_out`; also exposed
+	 *  to the UI in case someone wants a manual "forget my buddy" action.
+	 */
+	buddyClearCache: () => typedError<null, BuddyError>(__TAURI_INVOKE("buddy_clear_cache")),
+	buddyListRaces: () => typedError<RaceReadDTO[], BuddyError>(__TAURI_INVOKE("buddy_list_races")),
+	buddyListTraits: (kind: "attribute" | "racial" | "generic" | null) => typedError<TraitReadDTO[], BuddyError>(__TAURI_INVOKE("buddy_list_traits", { kind })),
+	/**
+	 *  Write-through: server mutates, then we update the cache from the
+	 *  response. A failed cache write after a successful remote call
+	 *  surfaces as `Transport` — the server state is ahead, and a manual
+	 *  Refresh will reconcile.
+	 */
+	buddyRename: (buddyId: string, name: string) => typedError<CachedBuddyEnvelope, BuddyError>(__TAURI_INVOKE("buddy_rename", { buddyId, name })),
+	buddyActivate: (buddyId: string) => typedError<CachedBuddyEnvelope, BuddyError>(__TAURI_INVOKE("buddy_activate", { buddyId })),
 	authStatus: () => __TAURI_INVOKE<AuthStatus>("auth_status"),
 	authStart: () => typedError<AuthStartResponse, string>(__TAURI_INVOKE("auth_start")),
 	authCancel: () => typedError<null, string>(__TAURI_INVOKE("auth_cancel")),
@@ -46,15 +75,101 @@ export type AuthStartResponse = {
  */
 export type AuthStatus = { kind: "idle" } | { kind: "pending"; user_code: string; verification_uri: string; verification_uri_complete: string; expires_at_ms: number } | { kind: "authenticated" } | { kind: "error"; code: string; message: string };
 
-export type BuddyDisplayInfo = {
+export type BuddyAttribute = "sky" | "earth" | "thunder" | "wind" | "water" | "fire" | "mountain" | "marsh";
+
+export type BuddyCoreDTO = {
 	id: string,
+	user_id: string,
 	name: string,
-	/**
-	 *  Relative path served from the Vue dev/build output — the frontend
-	 *  already bundles a default VRM under `src/three/assets/vrm/...`.
-	 */
-	model_url: string,
-	emotion: string,
+	race_code: string,
+	attribute: BuddyAttribute,
+	gender: BuddyGender,
+	stage: BuddyStage,
+	vrm_model: string,
+	trait_codes: string[],
+	bonding_level: number,
+	bonding_points: number,
+	hatched_at: string | null,
+	is_active: boolean,
+};
+
+export type BuddyEnvelope = {
+	buddy?: BuddyCoreDTO | null,
+	race?: RaceReadDTO | null,
+	traits?: BuddyExpandedTraits,
+};
+
+/**
+ *  Typed error surface. Mirrors `AuthStatus`'s `#[serde(tag = "kind")]`
+ *  convention so the Vue side has one mental model for "typed enum
+ *  coming from Rust".
+ */
+export type BuddyError = 
+/**
+ *  No access token in the settings store — user hasn't run the
+ *  device-code flow yet.
+ */
+{ kind: "unauthenticated" } | 
+// Server returned 401 — token exists but is no longer accepted.
+{ kind: "unauthorized" } | 
+// Server returned 404 — buddy id doesn't exist or isn't owned by us.
+{ kind: "not_found" } | 
+/**
+ *  Server returned 409 — only surfaces if/when `buddy_create` is
+ *  wired up; kept here so the enum matches the server contract.
+ */
+{ kind: "conflict"; message: string } | 
+/**
+ *  Server returned 422 — usually a validation failure on a field
+ *  like `name` length.
+ */
+{ kind: "validation"; message: string } | 
+// Any other non-2xx status.
+{ kind: "server"; status: number; message: string } | 
+// Network error, DNS failure, TLS, JSON parse, etc.
+{ kind: "transport"; message: string };
+
+export type BuddyExpandedTraits = {
+	attribute?: TraitReadDTO | null,
+	racial?: TraitReadDTO | null,
+	generic?: TraitReadDTO[],
+};
+
+export type BuddyGender = "male" | "female" | "neutral";
+
+export type BuddyStage = "infant" | "mature" | "elder";
+
+export type BuddyTraitKind = "attribute" | "racial" | "generic";
+
+/**
+ *  What we write to disk. The envelope is stored alongside a
+ *  wall-clock sync timestamp so the panel can show "last synced Xm
+ *  ago" without a second key.
+ */
+export type CachedBuddyEnvelope = {
+	envelope: BuddyEnvelope,
+	// Unix epoch millis at the moment the envelope was written.
+	synced_at_ms: number,
+};
+
+export type RaceReadDTO = {
+	code: string,
+	name_en: string,
+	name_zh: string,
+	default_attribute: BuddyAttribute,
+	source_text: string,
+	description_zh: string,
+	description_en: string,
+};
+
+export type TraitReadDTO = {
+	code: string,
+	kind: BuddyTraitKind,
+	name_en: string,
+	name_zh: string,
+	description_zh: string,
+	description_en: string,
+	sort_order: number,
 };
 
 export type VoiceStartOpts = {

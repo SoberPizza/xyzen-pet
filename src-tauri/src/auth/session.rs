@@ -175,6 +175,11 @@ pub fn auth_sign_out<R: Runtime>(app: AppHandle<R>) -> Result<(), String> {
     let session = app.state::<AuthSession>();
     session.cancel_task();
     clear_tokens(&app)?;
+    // Drop the cached buddy envelope so a subsequent sign-in on this
+    // device doesn't inherit the previous user's buddy.
+    if let Err(e) = crate::buddy::cache::clear(&app) {
+        warn!("[auth] buddy cache clear failed on sign-out: {e:?}");
+    }
     session.set_status(&app, AuthStatus::idle());
     Ok(())
 }
@@ -227,6 +232,13 @@ async fn run_poll_loop<R: Runtime>(
                 if let Some(session) = app.try_state::<AuthSession>() {
                     session.set_status(&app, AuthStatus::Authenticated);
                 }
+                // Warm the buddy cache so the settings panel renders
+                // from local data on first open. Best-effort — errors
+                // are logged inside the helper.
+                let app_for_sync = app.clone();
+                tokio::spawn(async move {
+                    crate::buddy::sync_after_auth(app_for_sync).await;
+                });
                 return;
             }
             PollOutcome::OAuthError(code) => match code.as_str() {

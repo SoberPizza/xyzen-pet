@@ -1,19 +1,43 @@
 # Bundled VRM models
 
-Every VRM shipped with the app is authored by the dev team and keyed by
-`(raceCode, stage)` — the same identity the backend `vrm_model` catalog
-uses. There is no user-upload path. The active buddy's race × stage
-resolves to one of these folders at render time.
+Every VRM shipped with the app is authored by the dev team and selected by
+filename. The Xyzen backend composes that filename from the active buddy's
+`race_code` and `stage` (see
+`service/buddy/info_api.py::_compose_vrm_model`):
 
-Each model is a folder here:
+```python
+# authoritative rule
+vrm_model = f"{buddy.race_code}_{buddy.stage.value}.vrm"
+```
 
-    <ModelFolder>/
-      <ModelFolder>.vrm         # the VRM (0.x or 1.0 — three-vrm supports both)
-      <ModelFolder>.png         # optional preview thumbnail
-      animation-driver.ts       # optional — per-model gesture overrides
+That string arrives on `BuddyCoreDTO.vrm_model` via `/api/v1/buddy/me`, and
+the frontend resolves it to one of the folders here. There is no
+user-upload path.
 
-Naming: use letters, digits, and hyphens/underscores only — no spaces.
-Thumbnail: 512×512 PNG with transparent background works well.
+## Stage vocabulary
+
+`BuddyStage` (`service/app/models/buddy.py`) admits exactly three values:
+
+- `infant`
+- `mature`
+- `elder`
+
+These are the only legal `<stage>` tokens in a VRM filename.
+
+## Folder layout
+
+Each model is a folder here, named per the rule above with the `.vrm`
+extension stripped:
+
+    <race_code>_<stage>/
+      <race_code>_<stage>.vrm     # filename must equal folder name
+      <race_code>_<stage>.png     # optional preview thumbnail
+      animation-driver.ts         # optional — per-model gesture overrides
+
+So a buddy with `race_code="jiuwei"` and `stage="infant"` resolves to
+`jiuwei_infant/jiuwei_infant.vrm`. Use letters, digits, and
+hyphens/underscores only — no spaces. Thumbnail: 512×512 PNG with
+transparent background works well.
 
 ## Per-model animation driver (optional)
 
@@ -25,12 +49,12 @@ character's temperament. Gestures you don't list fall through to the
 global `DEFAULT_GESTURE_ACTIONS` registry.
 
 ```ts
-// <ModelFolder>/animation-driver.ts
+// <race_code>_<stage>/animation-driver.ts
 import type { AnimationDriver } from '../../../../composables/vrm/animation-driver'
 
 export const driver: AnimationDriver = {
   raceCode: 'jiuwei',
-  stage: 'juvenile',
+  stage: 'infant',
   gestures: {
     wave: {
       actions: [
@@ -48,22 +72,19 @@ there for authored examples covering every backend gesture name.
 
 ## Registering the model
 
-Add one entry to `BUNDLED_MODELS` in `buddy/src/stores/display-models.ts`:
+Bundling a new VRM today is just two steps:
 
-```ts
-{
-  raceCode: 'jiuwei',
-  stage: 'juvenile',
-  url: new URL('../three/assets/vrm/models/Jiuwei/Jiuwei.vrm', import.meta.url).href,
-  previewImage: new URL('../three/assets/vrm/models/Jiuwei/Jiuwei.png', import.meta.url).href,
-  name: 'Jiuwei',
-  animationDriver: jiuweiDriver,
-}
-```
+1. Drop the folder in `src/three/assets/vrm/models/` named per the rule
+   above (`<race_code>_<stage>/`).
+2. If the rig needs custom gestures, add `animation-driver.ts` exporting
+   an `AnimationDriver` (see
+   `src/three/composables/vrm/animation-driver.ts`) whose `raceCode`
+   and `stage` fields match the folder name.
 
-The pair `(raceCode, stage)` must be unique across the registry; it
-matches the backend `vrm_model` catalog's `(race_code, stage)` unique
-constraint. Commit the VRM, thumbnail, driver, and registration together.
+The frontend registry and selection wiring — which maps the
+backend-supplied `vrm_model` string to its bundled URL — lands with the
+rebuilt `buddy_get_active` command (per the doc comment in
+`animation-driver.ts`). No registry edit is required in this pass.
 
 ## Licensing
 

@@ -1,19 +1,10 @@
 {
   "stage": {
-    "egg": "蛋",
-    "juvenile": "幼年",
-    "adult": "成年",
-    "metamorphosis": "蜕变"
-  },
-  "category": {
-    "egg": "蛋",
-    "beast": "兽",
-    "bird": "鸟",
-    "fish": "鱼",
-    "deity": "神"
+    "infant": "幼年",
+    "mature": "成年",
+    "elder": "年长"
   },
   "attribute": {
-    "none": "无",
     "sky": "天",
     "earth": "地",
     "thunder": "雷",
@@ -24,57 +15,8 @@
     "marsh": "泽"
   },
   "gender": {
-    "unknown": "未知",
     "male": "雄",
-    "female": "雌"
-  },
-  "race": {
-    "egg": "蛋",
-    "jiuwei": "九尾",
-    "lihuan": "狸讙",
-    "tianma": "天马",
-    "lingling": "軨軨",
-    "qiezhi": "窃脂"
-  },
-  "trait": {
-    "cat_egg": "休眠",
-    "cat_beast": "陆行",
-    "cat_bird": "飞翔",
-    "cat_fish": "潜游",
-    "cat_deity": "灵智",
-    "attr_none": "混沌",
-    "attr_sky": "苍穹",
-    "attr_earth": "厚土",
-    "attr_thunder": "震慑",
-    "attr_wind": "灵动",
-    "attr_water": "润泽",
-    "attr_fire": "炽烈",
-    "attr_mountain": "巍峨",
-    "attr_marsh": "沼息",
-    "race_egg": "待孵化",
-    "race_jiuwei": "祥瑞",
-    "race_lihuan": "御凶",
-    "race_tianma": "傲然",
-    "race_lingling": "洪荒",
-    "race_qiezhi": "守焰",
-    "gen_meek": "温顺",
-    "gen_lively": "活泼",
-    "gen_lazy": "慵懒",
-    "gen_loyal": "忠诚",
-    "gen_curious": "好奇",
-    "gen_alert": "警觉",
-    "gen_gluttonous": "贪吃",
-    "gen_tsundere": "傲娇",
-    "gen_clever": "灵慧",
-    "gen_goofy": "逗比",
-    "gen_snarky": "毒舌",
-    "gen_scheming": "腹黑",
-    "gen_chatty": "话唠",
-    "gen_airy": "天然",
-    "gen_edgy": "中二",
-    "gen_unfazed": "淡定",
-    "gen_dramatic": "戏精",
-    "gen_shy": "社恐",
-    "gen_sage": "老成"
+    "female": "雌",
+    "neutral": "中性"
   }
 }

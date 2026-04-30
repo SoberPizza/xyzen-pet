@@ -8,7 +8,7 @@ use specta::Type;
 use tauri_specta::{collect_commands, collect_events, Builder};
 
 use crate::auth;
-use crate::buddy_stub;
+use crate::buddy;
 use crate::settings;
 use crate::voice::session as voice_session;
 
@@ -40,8 +40,13 @@ pub fn bindings_builder() -> Builder<tauri::Wry> {
             voice_session::voice_start::<tauri::Wry>,
             voice_session::voice_stop::<tauri::Wry>,
             voice_session::voice_push_frame,
-            buddy_stub::buddy_get_active,
-            buddy_stub::buddy_list,
+            buddy::commands::buddy_get_me::<tauri::Wry>,
+            buddy::commands::buddy_sync::<tauri::Wry>,
+            buddy::commands::buddy_clear_cache::<tauri::Wry>,
+            buddy::commands::buddy_list_races::<tauri::Wry>,
+            buddy::commands::buddy_list_traits::<tauri::Wry>,
+            buddy::commands::buddy_rename::<tauri::Wry>,
+            buddy::commands::buddy_activate::<tauri::Wry>,
             auth::session::auth_status,
             auth::session::auth_start::<tauri::Wry>,
             auth::session::auth_cancel::<tauri::Wry>,

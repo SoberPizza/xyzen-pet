@@ -1,20 +1,21 @@
 <script setup lang="ts">
 /*
- * BuddyDetailsDialog — per-buddy edit / activate modal.
+ * BuddyDetailsDialog — per-buddy edit modal.
  *
- * UI shell restored after the remote-API strip. The old `useBuddyStore` +
- * `useSettingsStageModel` + SSE wiring is gone; this file now works against
- * the Rust-side `BuddyDisplayInfo` stub plus locally-default placeholder
- * fields (birthday, level, xp, traits, race meta). Save / Activate are
- * no-ops that surface a "not wired yet" banner so the visual flow stays
- * testable while the new API is rebuilt.
+ * Reads a `BuddyEnvelope` from the parent (panel has already called
+ * `commands.buddyGetMe()`). Save → `buddyRename`; Activate → `buddyActivate`.
+ * Gender, stage, hatched_at, race details, and trait chips are read-only
+ * until the backend grows matching endpoints.
  *
- * Template and styles are preserved verbatim from the pre-strip version.
+ * Note: the three nickname slots are UI-only local state. The remote API
+ * has no nickname field; persisting them would mean committing a schema
+ * to `extra_metadata`, which we want to avoid.
  */
 
 import { computed, reactive, ref, watch } from 'vue'
 
-import type { BuddyDisplayInfo } from '../../../ipc/bindings'
+import type { BuddyError, CachedBuddyEnvelope, RaceReadDTO, TraitReadDTO } from '../../../ipc/bindings'
+import { commands } from '../../../ipc/bindings'
 import { tBuddy } from '../../../locales'
 import {
   validateWakeTerm,
@@ -22,171 +23,92 @@ import {
   wakeTermLimits,
 } from '../../../utils/wake-word'
 
-type BuddyStage = 'egg' | 'juvenile' | 'adult' | 'metamorphosis'
-type BuddyGender = 'unknown' | 'male' | 'female'
-
-// Placeholder shape mirroring the old `Buddy` store type. The restored
-// template reads these fields; real values land once the rebuild wires a
-// richer `BuddyDisplayInfo` (or a successor type) from Rust.
-interface BuddyShell {
-  id: string
-  name: string
-  emotion: string
-  avatar: string | null
-  nicknames: string[] | null
-  birthday: string | null
-  gender: BuddyGender
-  raceCode: string
-  stage: BuddyStage
-  level: number
-  xp: number
-  totalInteractions: number
-  attributes: Record<string, unknown>
-  genericTraitCodes: string[]
-  categoryTraitCode: string | null
-  attributeTraitCode: string | null
-  raceTraitCode: string | null
-  race: {
-    description: string | null
-    source: string | null
-    category: string | null
-    attribute: string | null
-  } | null
-  isActive: boolean
-}
-
 const props = defineProps<{
   modelValue: boolean
-  buddyId: string | null
-  buddies: BuddyDisplayInfo[]
+  cached: CachedBuddyEnvelope | null
 }>()
 
-const emit = defineEmits<{ (e: 'update:modelValue', value: boolean): void }>()
+const emit = defineEmits<{
+  (e: 'update:modelValue', value: boolean): void
+}>()
 
 const open = computed({
   get: () => props.modelValue,
   set: (v: boolean) => emit('update:modelValue', v),
 })
 
-function toShell(info: BuddyDisplayInfo | undefined): BuddyShell | undefined {
-  if (!info) return undefined
-  return {
-    id: info.id,
-    name: info.name,
-    emotion: info.emotion,
-    avatar: null,
-    nicknames: null,
-    birthday: null,
-    gender: 'unknown',
-    raceCode: 'egg',
-    stage: 'egg',
-    level: 1,
-    xp: 0,
-    totalInteractions: 0,
-    attributes: {},
-    genericTraitCodes: [],
-    categoryTraitCode: null,
-    attributeTraitCode: null,
-    raceTraitCode: null,
-    race: null,
-    isActive: true,
-  }
+// The Rust side writes the cache on every successful mutation, and
+// `useIpcSetting` in the parent panel re-reads via the
+// `settings://changed` event. So the dialog never has to emit the new
+// envelope — it just re-derives from the prop.
+const envelope = computed(() => props.cached?.envelope ?? null)
+const buddy = computed(() => envelope.value?.buddy ?? null)
+const race = computed(() => envelope.value?.race ?? null)
+const attributeTrait = computed<TraitReadDTO | null>(
+  () => envelope.value?.traits?.attribute ?? null,
+)
+const raceTrait = computed<TraitReadDTO | null>(
+  () => envelope.value?.traits?.racial ?? null,
+)
+const genericTraits = computed<TraitReadDTO[]>(
+  () => envelope.value?.traits?.generic ?? [],
+)
+
+const isActive = computed(() => buddy.value?.is_active ?? false)
+
+const localeIsZh = typeof navigator !== 'undefined'
+  && (navigator.language || '').toLowerCase().startsWith('zh')
+
+function raceName(r: RaceReadDTO | null): string {
+  if (!r) return ''
+  return (localeIsZh ? r.name_zh : r.name_en) || r.code
 }
 
-const buddy = computed<BuddyShell | undefined>(() =>
-  toShell(props.buddies.find(b => b.id === props.buddyId)),
-)
-const isActive = computed(() => buddy.value?.isActive ?? false)
-// The other `view` flags (avatar URL, advanced editor, gender edit) used to
-// be browser-dev escape hatches and stay hidden in the streamlined Tauri UI.
-const view = {
-  showAvatarUrlField: false,
-  showAdvanced: false,
-  canEditGender: false,
-} as const
+function raceDescriptionText(r: RaceReadDTO | null): string {
+  if (!r) return ''
+  return (localeIsZh ? r.description_zh : r.description_en) || ''
+}
 
-const BUDDY_STAGES: BuddyStage[] = [
-  'egg',
-  'juvenile',
-  'adult',
-  'metamorphosis',
-]
-const BUDDY_GENDERS: BuddyGender[] = ['unknown', 'male', 'female']
+function traitLabel(t: TraitReadDTO): string {
+  return (localeIsZh ? t.name_zh : t.name_en) || t.code
+}
+
 const MAX_NICKNAMES = 3
+const NICKNAME_HTML_MAXLENGTH = 16
+const WAKE_TERM_HINT = 'Use 2–8 Chinese characters or 4–16 English characters.'
 
-// --- Edit form state ---
 interface FormState {
   name: string
   nicknamesText: string
-  avatar: string
-
-  gender: BuddyGender
-
-  raceCode: string
-  stage: BuddyStage
-  level: number
-  xp: number
-  totalInteractions: number
-  attributesText: string
-  genericTraitCodesText: string
 }
 
 function emptyForm(): FormState {
-  return {
-    name: '',
-    nicknamesText: '',
-    avatar: '',
-    gender: 'unknown',
-    raceCode: 'egg',
-    stage: 'egg',
-    level: 1,
-    xp: 0,
-    totalInteractions: 0,
-    attributesText: '{}',
-    genericTraitCodesText: '[]',
-  }
+  return { name: '', nicknamesText: '' }
 }
 
 const form = reactive<FormState>(emptyForm())
 const saving = ref(false)
+const activating = ref(false)
 const saveError = ref<string | null>(null)
 
-function fillFormFrom(b: BuddyShell) {
+function fillFormFrom(cached: CachedBuddyEnvelope | null) {
+  const b = cached?.envelope?.buddy ?? null
+  if (!b) {
+    Object.assign(form, emptyForm())
+    return
+  }
   form.name = b.name
-  form.nicknamesText = (b.nicknames ?? []).join(', ')
-  form.avatar = b.avatar ?? ''
-  form.gender = b.gender
-  form.raceCode = b.raceCode
-  form.stage = b.stage
-  form.level = b.level
-  form.xp = b.xp
-  form.totalInteractions = b.totalInteractions
-  form.attributesText = JSON.stringify(b.attributes ?? {}, null, 2)
-  form.genericTraitCodesText = JSON.stringify(
-    b.genericTraitCodes ?? [],
-    null,
-    2,
-  )
+  form.nicknamesText = ''
   saveError.value = null
 }
 
 watch(
-  () => [props.modelValue, props.buddyId, buddy.value] as const,
-  ([isOpen, _id, b]) => {
-    if (isOpen && b) fillFormFrom(b)
+  () => [props.modelValue, props.cached] as const,
+  ([isOpen, c]) => {
+    if (isOpen) fillFormFrom(c)
   },
   { immediate: true },
 )
-
-const avatarSrc = computed(() => form.avatar || buddy.value?.avatar || '')
-
-// Wake-term limits are language-aware (see utils/wake-word.ts):
-// CJK text 2–8 chars, Latin text 4–16 chars. We still pin a hard HTML
-// `maxlength` at 16 because it's the larger of the two; the validator
-// below enforces the real bound by code-point count.
-const NICKNAME_HTML_MAXLENGTH = 16
-
-const WAKE_TERM_HINT = 'Use 2–8 Chinese characters or 4–16 English characters.'
 
 function wakeTermError(
   raw: string,
@@ -238,21 +160,16 @@ function commitSlots() {
   form.nicknamesText = next.join(', ')
 }
 
-const raceLabel = computed(() => tBuddy('race', buddy.value?.raceCode))
+const raceLabel = computed(() => raceName(race.value))
 const stageLabel = computed(() => tBuddy('stage', buddy.value?.stage))
 const genderLabel = computed(() => tBuddy('gender', buddy.value?.gender))
-const categoryLabel = computed(() =>
-  tBuddy('category', buddy.value?.race?.category),
-)
 const attributeLabel = computed(() =>
-  tBuddy('attribute', buddy.value?.race?.attribute),
+  tBuddy('attribute', buddy.value?.attribute),
 )
 
-const raceDescription = computed<string | null>(
-  () => buddy.value?.race?.description ?? null,
-)
+const raceDescription = computed(() => raceDescriptionText(race.value))
 const raceSource = computed<string | null>(
-  () => buddy.value?.race?.source ?? null,
+  () => race.value?.source_text ?? null,
 )
 const raceSourceIsUrl = computed(() => {
   const src = raceSource.value
@@ -260,19 +177,16 @@ const raceSourceIsUrl = computed(() => {
   return /^https?:\/\//i.test(src)
 })
 
-const traitChips = computed<string[]>(() => {
-  const b = buddy.value
-  if (!b) return []
-  return [
-    b.categoryTraitCode,
-    b.attributeTraitCode,
-    b.raceTraitCode,
-    ...b.genericTraitCodes,
-  ].filter((code): code is string => Boolean(code))
+const traitChips = computed<TraitReadDTO[]>(() => {
+  const chips: TraitReadDTO[] = []
+  if (attributeTrait.value) chips.push(attributeTrait.value)
+  if (raceTrait.value) chips.push(raceTrait.value)
+  for (const t of genericTraits.value) chips.push(t)
+  return chips
 })
 
-const birthdayDisplay = computed(() => {
-  const raw = buddy.value?.birthday
+const hatchedDisplay = computed(() => {
+  const raw = buddy.value?.hatched_at
   if (!raw) return null
   const d = new Date(raw)
   if (Number.isNaN(d.getTime())) return null
@@ -283,14 +197,54 @@ const birthdayDisplay = computed(() => {
   })
 })
 
-function save() {
-  // No-op until the new backend API is wired up. Surface a banner so the
-  // UI flow is still exercisable in dev.
-  saveError.value = 'Saving is disabled until the new backend API is wired up.'
+function mapError(err: BuddyError): string {
+  switch (err.kind) {
+    case 'unauthenticated':
+      return 'Sign in on the Connection tab first.'
+    case 'unauthorized':
+      return 'Your session expired — please sign in again.'
+    case 'not_found':
+      return 'This buddy no longer exists.'
+    case 'validation':
+      return err.message || 'Name must be 1–64 characters.'
+    case 'conflict':
+      return err.message
+    case 'server':
+      return `Server error (${err.status}): ${err.message}`
+    case 'transport':
+      return err.message
+  }
+}
+
+async function save() {
+  const b = buddy.value
+  if (!b) return
+  if (wakeWordsInvalid.value) return
+  if (form.name.trim() === b.name) {
+    open.value = false
+    return
+  }
+  saving.value = true
+  saveError.value = null
+  try {
+    const result = await commands.buddyRename(b.id, form.name.trim())
+    if (result.status === 'ok') {
+      // Cache write fires a `settings://changed` event; `useIpcSetting`
+      // in the parent panel will re-read and re-render us via the
+      // `cached` prop.
+      open.value = false
+    } else {
+      saveError.value = mapError(result.error)
+    }
+  } catch (err) {
+    saveError.value = err instanceof Error ? err.message : String(err)
+  } finally {
+    saving.value = false
+  }
 }
 
 function cancel() {
-  if (buddy.value) fillFormFrom(buddy.value)
+  fillFormFrom(props.cached)
   open.value = false
 }
 
@@ -298,10 +252,22 @@ function onOverlayClick(e: MouseEvent) {
   if (e.target === e.currentTarget) cancel()
 }
 
-const activating = ref(false)
-
-function setActive() {
-  saveError.value = 'Activation is disabled until the new backend API is wired up.'
+async function setActive() {
+  const b = buddy.value
+  if (!b) return
+  activating.value = true
+  saveError.value = null
+  try {
+    const result = await commands.buddyActivate(b.id)
+    if (result.status === 'error') {
+      saveError.value = mapError(result.error)
+    }
+    // On success the cache write propagates through `useIpcSetting`.
+  } catch (err) {
+    saveError.value = err instanceof Error ? err.message : String(err)
+  } finally {
+    activating.value = false
+  }
 }
 </script>
 
@@ -332,16 +298,7 @@ function setActive() {
               </svg>
             </button>
             <div class="tauri-avatar">
-              <img
-                v-if="avatarSrc"
-                :src="avatarSrc"
-                :alt="buddy.name"
-                class="tauri-avatar-img"
-              >
-              <div
-                v-else
-                class="tauri-avatar-img tauri-avatar-placeholder"
-              >
+              <div class="tauri-avatar-img tauri-avatar-placeholder">
                 <svg
                   width="40"
                   height="40"
@@ -383,7 +340,7 @@ function setActive() {
               <div class="nickname-row">
                 <div class="nickname-header">
                   <label class="section-title">Nicknames</label>
-                  <span class="nickname-hint">Wake words · 2–8 中文 / 4–16 English</span>
+                  <span class="nickname-hint">Wake words · 2–8 中文 / 4–16 English · local only</span>
                 </div>
                 <div class="nickname-inputs">
                   <input
@@ -408,32 +365,16 @@ function setActive() {
               </div>
               <div class="meta-row">
                 <div
-                  v-if="birthdayDisplay"
+                  v-if="hatchedDisplay"
                   class="meta-item"
-                  :title="buddy.birthday ?? undefined"
+                  :title="buddy.hatched_at ?? undefined"
                 >
-                  <span class="meta-label">Birthday:</span>
-                  <span class="meta-value">{{ birthdayDisplay }}</span>
+                  <span class="meta-label">Hatched:</span>
+                  <span class="meta-value">{{ hatchedDisplay }}</span>
                 </div>
                 <div class="meta-item">
                   <span class="meta-label">Gender:</span>
-                  <select
-                    v-if="view.canEditGender"
-                    v-model="form.gender"
-                    class="meta-select"
-                  >
-                    <option
-                      v-for="g in BUDDY_GENDERS"
-                      :key="g"
-                      :value="g"
-                    >
-                      {{ tBuddy('gender', g) }}
-                    </option>
-                  </select>
-                  <span
-                    v-else
-                    class="meta-value"
-                  >{{ genderLabel }}</span>
+                  <span class="meta-value">{{ genderLabel }}</span>
                 </div>
               </div>
             </div>
@@ -442,14 +383,10 @@ function setActive() {
           <!-- Body -->
           <div class="details-body">
             <!-- Read-only stats -->
-            <div class="stats stats-6">
+            <div class="stats stats-4">
               <div class="stat">
                 <span class="stat-value">{{ raceLabel || '—' }}</span>
                 <span class="stat-label">Race</span>
-              </div>
-              <div class="stat">
-                <span class="stat-value">{{ categoryLabel || '—' }}</span>
-                <span class="stat-label">Category</span>
               </div>
               <div class="stat">
                 <span class="stat-value">{{ attributeLabel || '—' }}</span>
@@ -457,15 +394,11 @@ function setActive() {
               </div>
               <div class="stat">
                 <span class="stat-value">{{ stageLabel || '—' }}</span>
-                <span class="stat-label">Evolution</span>
+                <span class="stat-label">Stage</span>
               </div>
               <div class="stat">
-                <span class="stat-value">{{ buddy.level }}</span>
-                <span class="stat-label">Level</span>
-              </div>
-              <div class="stat">
-                <span class="stat-value">{{ buddy.xp }}</span>
-                <span class="stat-label">XP</span>
+                <span class="stat-value">{{ buddy.bonding_level }} · {{ buddy.bonding_points }}</span>
+                <span class="stat-label">Bonding</span>
               </div>
             </div>
 
@@ -515,12 +448,12 @@ function setActive() {
                 class="keyword-chips"
               >
                 <span
-                  v-for="(code, idx) in traitChips"
-                  :key="`${code}-${idx}`"
+                  v-for="t in traitChips"
+                  :key="t.code"
                   class="keyword-chip"
-                  :title="code"
+                  :title="localeIsZh ? t.description_zh : t.description_en"
                 >
-                  {{ tBuddy('trait', code) }}
+                  {{ traitLabel(t) }}
                 </span>
               </div>
               <p
@@ -529,142 +462,6 @@ function setActive() {
               >
                 —
               </p>
-            </section>
-
-            <!-- Avatar URL (dev) -->
-            <section
-              v-if="view.showAvatarUrlField"
-              class="section"
-            >
-              <div class="field">
-                <label
-                  class="section-title"
-                  for="buddy-avatar"
-                >Avatar URL</label>
-                <input
-                  id="buddy-avatar"
-                  v-model="form.avatar"
-                  type="url"
-                  class="section-input"
-                  placeholder="https://..."
-                >
-              </div>
-            </section>
-
-            <!-- Advanced (dev-only) -->
-            <section
-              v-if="view.showAdvanced"
-              class="section advanced"
-            >
-              <div class="advanced-header">
-                <h3 class="section-title">
-                  Advanced
-                </h3>
-                <span class="advanced-pill">dev</span>
-              </div>
-              <div class="field-grid">
-                <div class="field">
-                  <label
-                    class="section-title"
-                    for="buddy-race-code"
-                  >Race code</label>
-                  <input
-                    id="buddy-race-code"
-                    v-model="form.raceCode"
-                    type="text"
-                    class="section-input"
-                    maxlength="50"
-                  >
-                </div>
-                <div class="field">
-                  <label
-                    class="section-title"
-                    for="buddy-stage"
-                  >Stage</label>
-                  <select
-                    id="buddy-stage"
-                    v-model="form.stage"
-                    class="section-input"
-                  >
-                    <option
-                      v-for="s in BUDDY_STAGES"
-                      :key="s"
-                      :value="s"
-                    >
-                      {{ tBuddy('stage', s) }}
-                    </option>
-                  </select>
-                </div>
-                <div class="field">
-                  <label
-                    class="section-title"
-                    for="buddy-level"
-                  >Level</label>
-                  <input
-                    id="buddy-level"
-                    v-model.number="form.level"
-                    type="number"
-                    min="1"
-                    class="section-input"
-                  >
-                </div>
-                <div class="field">
-                  <label
-                    class="section-title"
-                    for="buddy-xp"
-                  >XP</label>
-                  <input
-                    id="buddy-xp"
-                    v-model.number="form.xp"
-                    type="number"
-                    min="0"
-                    class="section-input"
-                  >
-                </div>
-                <div class="field">
-                  <label
-                    class="section-title"
-                    for="buddy-interactions"
-                  >Total interactions</label>
-                  <input
-                    id="buddy-interactions"
-                    v-model.number="form.totalInteractions"
-                    type="number"
-                    min="0"
-                    class="section-input"
-                  >
-                </div>
-              </div>
-              <div
-                class="field"
-                style="margin-top: 12px"
-              >
-                <label
-                  class="section-title"
-                  for="buddy-attributes"
-                >Attributes (JSON)</label>
-                <textarea
-                  id="buddy-attributes"
-                  v-model="form.attributesText"
-                  class="section-textarea mono"
-                  rows="3"
-                />
-              </div>
-              <div
-                class="field"
-                style="margin-top: 12px"
-              >
-                <label
-                  class="section-title"
-                  for="buddy-generic-traits"
-                >Generic trait codes (JSON array)</label>
-                <textarea
-                  id="buddy-generic-traits"
-                  v-model="form.genericTraitCodesText"
-                  class="section-textarea mono"
-                  rows="3"
-                />
-              </div>
             </section>
           </div>
 
@@ -803,7 +600,7 @@ function setActive() {
 }
 .stats {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 8px;
   padding: 12px;
   border-radius: 12px;
@@ -817,10 +614,11 @@ function setActive() {
   gap: 2px;
 }
 .stat-value {
-  font-size: 16px;
+  font-size: 14px;
   font-weight: 600;
   color: #e8e8e8;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  text-align: center;
 }
 .stat-label {
   font-size: 10px;
@@ -861,88 +659,6 @@ function setActive() {
   line-height: 1.55;
   white-space: pre-wrap;
 }
-.section-empty {
-  color: #666;
-  font-style: italic;
-}
-
-.section-input,
-.section-textarea {
-  width: 100%;
-  padding: 8px 10px;
-  font-size: 14px;
-  color: #ddd;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 8px;
-  outline: none;
-  transition: all 0.15s;
-  font-family: inherit;
-  resize: vertical;
-}
-.section-input:hover,
-.section-textarea:hover {
-  border-color: rgba(255, 255, 255, 0.15);
-}
-.section-input:focus,
-.section-textarea:focus {
-  border-color: rgba(140, 120, 220, 0.5);
-  background: rgba(255, 255, 255, 0.05);
-}
-.section-textarea {
-  line-height: 1.55;
-}
-.section-textarea.mono {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 12px;
-}
-select.section-input {
-  appearance: none;
-  background-image:
-    linear-gradient(45deg, transparent 50%, #888 50%),
-    linear-gradient(135deg, #888 50%, transparent 50%);
-  background-position:
-    calc(100% - 16px) 14px,
-    calc(100% - 11px) 14px;
-  background-size:
-    5px 5px,
-    5px 5px;
-  background-repeat: no-repeat;
-  padding-right: 28px;
-}
-
-.field {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.field-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 12px;
-}
-
-.advanced {
-  padding: 14px;
-  border-radius: 12px;
-  background: rgba(255, 200, 80, 0.03);
-  border: 1px dashed rgba(255, 200, 80, 0.2);
-}
-.advanced-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.advanced-pill {
-  font-size: 9px;
-  font-weight: 700;
-  padding: 2px 7px;
-  border-radius: 10px;
-  background: rgba(255, 200, 80, 0.15);
-  color: #e6c25a;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-}
 
 .details-footer {
   flex-shrink: 0;
@@ -956,8 +672,7 @@ select.section-input {
   flex: 1;
 }
 .primary-btn,
-.secondary-btn,
-.ghost-btn {
+.secondary-btn {
   border: none;
   border-radius: 10px;
   padding: 8px 16px;
@@ -988,19 +703,6 @@ select.section-input {
   color: #eee;
 }
 .secondary-btn:disabled {
-  color: #666;
-  cursor: default;
-}
-.ghost-btn {
-  background: transparent;
-  color: #888;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-}
-.ghost-btn:hover:not(:disabled) {
-  color: #d8c8ff;
-  border-color: rgba(140, 120, 220, 0.35);
-}
-.ghost-btn:disabled {
   color: #666;
   cursor: default;
 }
@@ -1062,36 +764,6 @@ select.section-input {
 }
 .meta-value {
   color: #ddd;
-}
-.meta-select {
-  padding: 2px 20px 2px 6px;
-  font-size: 12px;
-  color: #ddd;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 6px;
-  outline: none;
-  cursor: pointer;
-  font-family: inherit;
-  appearance: none;
-  background-image:
-    linear-gradient(45deg, transparent 50%, #888 50%),
-    linear-gradient(135deg, #888 50%, transparent 50%);
-  background-position:
-    calc(100% - 11px) 10px,
-    calc(100% - 7px) 10px;
-  background-size:
-    4px 4px,
-    4px 4px;
-  background-repeat: no-repeat;
-  transition: all 0.15s;
-}
-.meta-select:hover {
-  border-color: rgba(255, 255, 255, 0.15);
-}
-.meta-select:focus {
-  border-color: rgba(140, 120, 220, 0.5);
-  background-color: rgba(255, 255, 255, 0.05);
 }
 .tauri-header-meta {
   flex: 1;
@@ -1204,21 +876,6 @@ a.race-source:hover {
   font-size: 12px;
   font-weight: 500;
   line-height: 1.4;
-}
-
-.stats-4 {
-  grid-template-columns: repeat(4, 1fr);
-}
-.stats-4 .stat-value {
-  font-size: 14px;
-}
-.stats-6 {
-  grid-template-columns: repeat(3, 1fr);
-  row-gap: 12px;
-}
-.stats-6 .stat-value {
-  font-size: 13px;
-  text-align: center;
 }
 
 .read-only-value {

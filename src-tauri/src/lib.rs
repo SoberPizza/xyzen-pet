@@ -8,7 +8,7 @@ use tracing_subscriber::EnvFilter;
 // exercise their public surface (VadFsm, AuthClient, SettingsChanged, …).
 // The Tauri app itself only uses what's re-exported below.
 pub mod auth;
-pub mod buddy_stub;
+pub mod buddy;
 pub mod events;
 pub mod ipc;
 pub mod settings;
@@ -147,8 +147,13 @@ pub fn run() {
             voice::session::voice_start,
             voice::session::voice_stop,
             voice::session::voice_push_frame,
-            buddy_stub::buddy_get_active,
-            buddy_stub::buddy_list,
+            buddy::commands::buddy_get_me,
+            buddy::commands::buddy_sync,
+            buddy::commands::buddy_clear_cache,
+            buddy::commands::buddy_list_races,
+            buddy::commands::buddy_list_traits,
+            buddy::commands::buddy_rename,
+            buddy::commands::buddy_activate,
             // Auth (Xyzen device-code flow).
             auth::session::auth_status,
             auth::session::auth_start,

@@ -7,8 +7,8 @@ import { useAudioContext } from './stores/audio'
 import { useGeneralStore } from './stores/general'
 import { useBuddyVoiceSession } from './composables/useBuddyVoiceSession'
 import SettingsStandalone from './components/SettingsStandalone.vue'
-import defaultVrmUrl from './three/assets/vrm/models/buddy_egg/buddy_egg.vrm?url'
-import { driver as defaultAnimationDriver } from './three/assets/vrm/models/buddy_egg/animation-driver'
+import defaultVrmUrl from './three/assets/vrm/models/jiuwei_infant/jiuwei_infant.vrm?url'
+import { driver as defaultAnimationDriver } from './three/assets/vrm/models/jiuwei_infant/animation-driver'
 import { animations } from './three/assets/vrm'
 import ThreeScene from './three/components/ThreeScene.vue'
 import { DEFAULT_GESTURE_ACTIONS, useVRMGestureDriver } from './three/composables/vrm/gesture-driver'
@@ -19,9 +19,9 @@ import { commands } from './ipc/bindings'
 const audioContextStore = useAudioContext()
 const generalStore = useGeneralStore()
 
-// Default VRM + animation driver. The remote-buddy-selector flow is gone
-// along with the old backend; a future `buddy_get_active` command will
-// replace this hardcoded pick once the new API supplies multiple models.
+// Default VRM + animation driver. A future pass will resolve
+// `envelope.buddy.vrm_model` (returned from `buddy_get_me`) to an actual
+// asset URL once the VRM asset pipeline is in place.
 const stageModelSelectedUrl = ref<string>(defaultVrmUrl)
 const stageModelRenderer = ref<'vrm' | 'disabled'>('vrm')
 const stageViewControlsEnabled = ref(false)
@@ -205,9 +205,10 @@ const { audioContext } = audioContextStore
 
 // --- Gesture driver: IPC `avatar://gesture` events → VRM actions. ---
 //
-// The registry bakes the default action map with the bundled buddy_egg
-// driver's overrides. When the new buddy-info API lands we'll switch back
-// to a per-active-buddy registry, but today there's only one model.
+// The registry bakes the default action map with the bundled
+// jiuwei_infant driver's overrides. When the new buddy-info API lands
+// we'll switch back to a per-active-buddy registry, but today there's
+// only one model.
 const mergedRegistry = {
   ...DEFAULT_GESTURE_ACTIONS,
   ...(defaultAnimationDriver.gestures ?? {}),
@@ -283,9 +284,10 @@ onMounted(async () => {
     h: windowSize.value.h,
   })
 
-  // Ping the Rust buddy stub so the VRM selector layer has something to
-  // consume once the new API arrives; the return value isn't used today.
-  commands.buddyGetActive().catch(() => {})
+  // Warm up the buddy envelope so the VRM selector layer has something
+  // cached once it's wired up. Unauthenticated / transport errors are
+  // expected here and intentionally swallowed.
+  commands.buddyGetMe().catch(() => {})
 
   console.info('[buddy:voice:app] auto-starting voice session on mount')
   await voiceSession.start().catch(err => console.warn('[buddy] voice session start failed', err))

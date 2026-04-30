@@ -1,16 +1,16 @@
 import type { AnimationDriver } from '../../../../composables/vrm/animation-driver'
 
 /**
- * buddy_egg — non-humanoid / creature-shaped VRM for the Egg race at the
- * Egg stage. Arm-based gestures (wave, clap, point) don't read well on
- * this rig, so we re-express them as face / head motion: stronger
+ * jiuwei_infant — non-humanoid / creature-shaped VRM for the Jiuwei race
+ * at the infant stage. Arm-based gestures (wave, clap, point) don't read
+ * well on this rig, so we re-express them as face / head motion: stronger
  * mouth-morph pulses and look pulses stand in for body language.
  * Gestures without overrides here fall back to the global defaults,
  * which are already look-and-morph based.
  */
 export const driver: AnimationDriver = {
-  raceCode: 'egg',
-  stage: 'egg',
+  raceCode: 'jiuwei',
+  stage: 'infant',
   gestures: {
     wave: {
       actions: [

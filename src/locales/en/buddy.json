@@ -1,19 +1,10 @@
 {
   "stage": {
-    "egg": "Egg",
-    "juvenile": "Juvenile",
-    "adult": "Adult",
-    "metamorphosis": "Metamorphosis"
-  },
-  "category": {
-    "egg": "Egg",
-    "beast": "Beast",
-    "bird": "Bird",
-    "fish": "Fish",
-    "deity": "Deity"
+    "infant": "Infant",
+    "mature": "Mature",
+    "elder": "Elder"
   },
   "attribute": {
-    "none": "None",
     "sky": "Sky",
     "earth": "Earth",
     "thunder": "Thunder",
@@ -24,57 +15,8 @@
     "marsh": "Marsh"
   },
   "gender": {
-    "unknown": "Unknown",
     "male": "Male",
-    "female": "Female"
-  },
-  "race": {
-    "egg": "Egg",
-    "jiuwei": "Jiuwei",
-    "lihuan": "Lihuan",
-    "tianma": "Tianma",
-    "lingling": "Lingling",
-    "qiezhi": "Qiezhi"
-  },
-  "trait": {
-    "cat_egg": "Dormant",
-    "cat_beast": "Grounded",
-    "cat_bird": "Aerial",
-    "cat_fish": "Submerged",
-    "cat_deity": "Sagacious",
-    "attr_none": "Chaos",
-    "attr_sky": "Firmament",
-    "attr_earth": "Earthen",
-    "attr_thunder": "Resounding",
-    "attr_wind": "Airy",
-    "attr_water": "Nourishing",
-    "attr_fire": "Blazing",
-    "attr_mountain": "Towering",
-    "attr_marsh": "Misty",
-    "race_egg": "Unhatched",
-    "race_jiuwei": "Auspicious",
-    "race_lihuan": "Warding",
-    "race_tianma": "Proud",
-    "race_lingling": "Primordial",
-    "race_qiezhi": "Flamekeeping",
-    "gen_meek": "Gentle",
-    "gen_lively": "Lively",
-    "gen_lazy": "Languid",
-    "gen_loyal": "Loyal",
-    "gen_curious": "Curious",
-    "gen_alert": "Alert",
-    "gen_gluttonous": "Peckish",
-    "gen_tsundere": "Tsundere",
-    "gen_clever": "Witty",
-    "gen_goofy": "Goofy",
-    "gen_snarky": "Snarky",
-    "gen_scheming": "Scheming",
-    "gen_chatty": "Chatty",
-    "gen_airy": "Airy",
-    "gen_edgy": "Edgy",
-    "gen_unfazed": "Unfazed",
-    "gen_dramatic": "Dramatic",
-    "gen_shy": "Shy",
-    "gen_sage": "Sage"
+    "female": "Female",
+    "neutral": "Neutral"
   }
 }
